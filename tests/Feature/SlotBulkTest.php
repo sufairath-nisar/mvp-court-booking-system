@@ -64,6 +64,32 @@ class SlotBulkTest extends TestCase
             ->assertJsonPath('data.skipped_count', 1);
     }
 
+    public function test_bulk_generation_supports_different_hours_per_day(): void
+    {
+        $admin = User::factory()->create(['role' => UserRole::ADMIN]);
+        $court = Court::factory()->create();
+
+        // A 7-day window starting next Monday contains exactly one Mon and one Fri.
+        $monday = Carbon::parse('next monday');
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/slots/bulk', [
+                'court_id'   => $court->id,
+                'start_date' => $monday->format('Y-m-d'),
+                'end_date'   => $monday->copy()->addDays(6)->format('Y-m-d'),
+                'schedules'  => [
+                    // Monday: 09:00-21:00, 1h => 12 slots
+                    ['days_of_week' => [1], 'start_time' => '09:00', 'end_time' => '21:00', 'slot_duration' => 60],
+                    // Friday: 08:00-12:00, 1h => 4 slots
+                    ['days_of_week' => [5], 'start_time' => '08:00', 'end_time' => '12:00', 'slot_duration' => 60],
+                ],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.created_count', 16); // 12 (Mon) + 4 (Fri)
+
+        $this->assertDatabaseCount('court_slots', 16);
+    }
+
     public function test_a_consumer_cannot_bulk_generate_slots(): void
     {
         $consumer = User::factory()->create();

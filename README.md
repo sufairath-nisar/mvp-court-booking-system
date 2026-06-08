@@ -127,11 +127,11 @@ Base URL: `http://localhost:8000/api`
 | DELETE | `/admin/slots/{id}`  | Delete slot                          |
 
 **Bulk slot generation** — instead of creating each slot by hand, one request builds
-an entire schedule. Steps from `daily_start_time` to `daily_end_time` in
-`slot_duration`-minute blocks, for every day in `[start_date, end_date]` (optionally
-restricted to `days_of_week`, 0=Sun…6=Sat). Existing/overlapping slots are skipped, not
-errored; the response returns `created_count` and `skipped_count`.
+an entire schedule across `[start_date, end_date]`. Existing/overlapping slots are
+skipped (not errored); the response returns `created_count` and `skipped_count`.
+Days-of-week use 0=Sun … 6=Sat.
 
+*Flat form* — same hours every day (optionally restricted to `days_of_week`):
 ```json
 POST /api/admin/slots/bulk
 {
@@ -144,7 +144,23 @@ POST /api/admin/slots/bulk
   "days_of_week": [1, 2, 3, 4, 5]
 }
 ```
-→ generates up to 12 slots/day across the range in a single call.
+
+*Per-day form* — different hours/durations per day via `schedules` (takes precedence
+over the flat form). e.g. Mondays 09:00–21:00 but Fridays only 08:00–12:00:
+```json
+POST /api/admin/slots/bulk
+{
+  "court_id": 1,
+  "start_date": "2026-07-01",
+  "end_date": "2026-07-31",
+  "schedules": [
+    { "days_of_week": [1], "start_time": "09:00", "end_time": "21:00", "slot_duration": 60 },
+    { "days_of_week": [5], "start_time": "08:00", "end_time": "12:00", "slot_duration": 60 }
+  ]
+}
+```
+Each schedule steps from `start_time` to `end_time` in `slot_duration`-minute blocks
+on its `days_of_week`; omit `days_of_week` to apply to every day in the range.
 
 ### Consumer — Booking (`role:consumer`)
 | Method | Endpoint                                   | Description                          |

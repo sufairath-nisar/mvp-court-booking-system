@@ -43,10 +43,11 @@ class SlotService
     /**
      * Bulk-generate slots for a court across a date range.
      *
-     * Instead of an admin creating each slot by hand, this steps from
-     * `daily_start_time` to `daily_end_time` in `slot_duration`-minute blocks,
-     * for every day in [start_date, end_date] (optionally only on `days_of_week`).
-     * Any slot that would overlap an existing one is skipped, not errored.
+     * Instead of an admin creating each slot by hand, this builds a whole schedule
+     * in one call. Each day's hours come from one or more "schedules" (a window of
+     * start/end + slot length applied to chosen days-of-week), so different days can
+     * differ — e.g. Mon 09:00-21:00 while Fri runs 08:00-12:00. A slot that would
+     * overlap an existing one is skipped, not errored.
      *
      * @param array<string, mixed> $data
      * @return array{created: array<int, CourtSlot>, created_count: int, skipped_count: int}
@@ -65,38 +66,19 @@ class SlotService
             throw new BusinessRuleException('The date range may not exceed 90 days.');
         }
 
-        $duration = (int) ($data['slot_duration'] ?? 60);
-        $days     = $data['days_of_week'] ?? null; // null => every day
+        $schedules = $this->normaliseSchedules($data);
 
         $created = [];
         $skipped = 0;
 
-        DB::transaction(function () use ($start, $end, $duration, $days, $courtId, $data, &$created, &$skipped) {
+        DB::transaction(function () use ($start, $end, $schedules, $courtId, &$created, &$skipped) {
             for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-                if ($days !== null && ! in_array($date->dayOfWeek, $days, true)) {
-                    continue;
-                }
-
-                $dayStart = Carbon::createFromFormat('Y-m-d H:i', $date->format('Y-m-d') . ' ' . $data['daily_start_time']);
-                $dayEnd   = Carbon::createFromFormat('Y-m-d H:i', $date->format('Y-m-d') . ' ' . $data['daily_end_time']);
-
-                for ($slotStart = $dayStart->copy(); $slotStart->copy()->addMinutes($duration)->lte($dayEnd); $slotStart->addMinutes($duration)) {
-                    $startStr = $slotStart->format('H:i:s');
-                    $endStr   = $slotStart->copy()->addMinutes($duration)->format('H:i:s');
-
-                    if ($this->slots->hasOverlap($courtId, $date->format('Y-m-d'), $startStr, $endStr)) {
-                        $skipped++;
-
+                foreach ($schedules as $schedule) {
+                    if ($schedule['days'] !== null && ! in_array($date->dayOfWeek, $schedule['days'], true)) {
                         continue;
                     }
 
-                    $created[] = $this->slots->create([
-                        'court_id'   => $courtId,
-                        'date'       => $date->format('Y-m-d'),
-                        'start_time' => $startStr,
-                        'end_time'   => $endStr,
-                        'is_booked'  => false,
-                    ]);
+                    $this->generateDaySlots($courtId, $date, $schedule, $created, $skipped);
                 }
             }
         });
@@ -106,6 +88,75 @@ class SlotService
             'created_count' => count($created),
             'skipped_count' => $skipped,
         ];
+    }
+
+    /**
+     * Normalise the request into a uniform list of schedule windows.
+     *
+     * Accepts either the per-day `schedules` array or the flat single-window form;
+     * both reduce to: [{ days: int[]|null, start: 'H:i', end: 'H:i', duration: int }].
+     *
+     * @param array<string, mixed> $data
+     * @return array<int, array{days: array<int,int>|null, start: string, end: string, duration: int}>
+     *
+     * @throws BusinessRuleException
+     */
+    private function normaliseSchedules(array $data): array
+    {
+        if (! empty($data['schedules'])) {
+            return array_map(function (array $schedule): array {
+                if ($schedule['start_time'] >= $schedule['end_time']) {
+                    throw new BusinessRuleException("Each schedule's start_time must be before its end_time.");
+                }
+
+                return [
+                    'days'     => $schedule['days_of_week'] ?? null,
+                    'start'    => $schedule['start_time'],
+                    'end'      => $schedule['end_time'],
+                    'duration' => (int) ($schedule['slot_duration'] ?? 60),
+                ];
+            }, $data['schedules']);
+        }
+
+        // Flat form: a single window applied to the selected (or all) days.
+        return [[
+            'days'     => $data['days_of_week'] ?? null,
+            'start'    => $data['daily_start_time'],
+            'end'      => $data['daily_end_time'],
+            'duration' => (int) ($data['slot_duration'] ?? 60),
+        ]];
+    }
+
+    /**
+     * Step through one day's window and create each non-overlapping slot.
+     *
+     * @param array{days: array<int,int>|null, start: string, end: string, duration: int} $schedule
+     * @param array<int, CourtSlot> $created
+     */
+    private function generateDaySlots(int $courtId, Carbon $date, array $schedule, array &$created, int &$skipped): void
+    {
+        $duration = $schedule['duration'];
+        $dayStart = Carbon::createFromFormat('Y-m-d H:i', $date->format('Y-m-d') . ' ' . $schedule['start']);
+        $dayEnd   = Carbon::createFromFormat('Y-m-d H:i', $date->format('Y-m-d') . ' ' . $schedule['end']);
+
+        for ($slotStart = $dayStart->copy(); $slotStart->copy()->addMinutes($duration)->lte($dayEnd); $slotStart->addMinutes($duration)) {
+            $startStr = $slotStart->format('H:i:s');
+            $endStr   = $slotStart->copy()->addMinutes($duration)->format('H:i:s');
+
+            if ($this->slots->hasOverlap($courtId, $date->format('Y-m-d'), $startStr, $endStr)) {
+                $skipped++;
+
+                continue;
+            }
+
+            $created[] = $this->slots->create([
+                'court_id'   => $courtId,
+                'date'       => $date->format('Y-m-d'),
+                'start_time' => $startStr,
+                'end_time'   => $endStr,
+                'is_booked'  => false,
+            ]);
+        }
     }
 
     /**
