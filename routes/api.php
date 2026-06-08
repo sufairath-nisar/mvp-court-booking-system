@@ -35,6 +35,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::apiResource('courts', CourtController::class);
 
         // Slot management (no `show` — slots are listed/browsed in bulk)
+        Route::post('slots/bulk', [CourtSlotController::class, 'bulkStore']);
         Route::apiResource('slots', CourtSlotController::class)->except(['show']);
     });
 

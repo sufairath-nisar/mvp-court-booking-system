@@ -236,6 +236,22 @@
           }
         },
         {
+          "name": "Bulk generate slots",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"court_id\": 1,\n  \"start_date\": \"2026-12-01\",\n  \"end_date\": \"2026-12-07\",\n  \"daily_start_time\": \"09:00\",\n  \"daily_end_time\": \"21:00\",\n  \"slot_duration\": 60,\n  \"days_of_week\": [1, 2, 3, 4, 5]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/slots/bulk", "host": ["{{base_url}}"], "path": ["admin", "slots", "bulk"] }
+          }
+        },
+        {
           "name": "Update slot",
           "request": {
             "method": "PUT",

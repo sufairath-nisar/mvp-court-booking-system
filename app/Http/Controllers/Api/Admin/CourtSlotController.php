@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Slot\BulkStoreSlotRequest;
 use App\Http\Requests\Slot\StoreSlotRequest;
 use App\Http\Requests\Slot\UpdateSlotRequest;
 use App\Http\Resources\CourtSlotResource;
@@ -47,6 +48,26 @@ class CourtSlotController extends Controller
         return $this->successResponse(
             new CourtSlotResource($slot),
             'Slot created successfully.',
+            201
+        );
+    }
+
+    /**
+     * Bulk-generate slots for a court over a date range (avoids creating them one by one).
+     *
+     * POST /api/admin/slots/bulk
+     */
+    public function bulkStore(BulkStoreSlotRequest $request): JsonResponse
+    {
+        $result = $this->slotService->generateBulk($request->validated());
+
+        return $this->successResponse(
+            [
+                'created_count' => $result['created_count'],
+                'skipped_count' => $result['skipped_count'],
+                'slots'         => CourtSlotResource::collection($result['created']),
+            ],
+            "Generated {$result['created_count']} slot(s); skipped {$result['skipped_count']} overlapping.",
             201
         );
     }

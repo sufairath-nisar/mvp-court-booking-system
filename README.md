@@ -122,8 +122,29 @@ Base URL: `http://localhost:8000/api`
 |--------|----------------------|--------------------------------------|
 | GET    | `/admin/slots`       | List slots (filter: court_id, date)  |
 | POST   | `/admin/slots`       | Create slot (overlap-protected)      |
+| POST   | `/admin/slots/bulk`  | Bulk-generate slots for a date range (see below) |
 | PUT    | `/admin/slots/{id}`  | Update slot                          |
 | DELETE | `/admin/slots/{id}`  | Delete slot                          |
+
+**Bulk slot generation** — instead of creating each slot by hand, one request builds
+an entire schedule. Steps from `daily_start_time` to `daily_end_time` in
+`slot_duration`-minute blocks, for every day in `[start_date, end_date]` (optionally
+restricted to `days_of_week`, 0=Sun…6=Sat). Existing/overlapping slots are skipped, not
+errored; the response returns `created_count` and `skipped_count`.
+
+```json
+POST /api/admin/slots/bulk
+{
+  "court_id": 1,
+  "start_date": "2026-07-01",
+  "end_date": "2026-07-07",
+  "daily_start_time": "09:00",
+  "daily_end_time": "21:00",
+  "slot_duration": 60,
+  "days_of_week": [1, 2, 3, 4, 5]
+}
+```
+→ generates up to 12 slots/day across the range in a single call.
 
 ### Consumer — Booking (`role:consumer`)
 | Method | Endpoint                                   | Description                          |

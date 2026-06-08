@@ -6,8 +6,10 @@ use App\Exceptions\BusinessRuleException;
 use App\Models\CourtSlot;
 use App\Repositories\Contracts\CourtRepositoryInterface;
 use App\Repositories\Contracts\CourtSlotRepositoryInterface;
+use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class SlotService
 {
@@ -36,6 +38,74 @@ class SlotService
         $this->courts->findOrFail($courtId);
 
         return $this->slots->availableForCourt($courtId, $date);
+    }
+
+    /**
+     * Bulk-generate slots for a court across a date range.
+     *
+     * Instead of an admin creating each slot by hand, this steps from
+     * `daily_start_time` to `daily_end_time` in `slot_duration`-minute blocks,
+     * for every day in [start_date, end_date] (optionally only on `days_of_week`).
+     * Any slot that would overlap an existing one is skipped, not errored.
+     *
+     * @param array<string, mixed> $data
+     * @return array{created: array<int, CourtSlot>, created_count: int, skipped_count: int}
+     *
+     * @throws BusinessRuleException
+     */
+    public function generateBulk(array $data): array
+    {
+        $courtId = (int) $data['court_id'];
+        $this->courts->findOrFail($courtId);
+
+        $start = Carbon::createFromFormat('Y-m-d', $data['start_date'])->startOfDay();
+        $end   = Carbon::createFromFormat('Y-m-d', $data['end_date'])->startOfDay();
+
+        if ($start->diffInDays($end) > 90) {
+            throw new BusinessRuleException('The date range may not exceed 90 days.');
+        }
+
+        $duration = (int) ($data['slot_duration'] ?? 60);
+        $days     = $data['days_of_week'] ?? null; // null => every day
+
+        $created = [];
+        $skipped = 0;
+
+        DB::transaction(function () use ($start, $end, $duration, $days, $courtId, $data, &$created, &$skipped) {
+            for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+                if ($days !== null && ! in_array($date->dayOfWeek, $days, true)) {
+                    continue;
+                }
+
+                $dayStart = Carbon::createFromFormat('Y-m-d H:i', $date->format('Y-m-d') . ' ' . $data['daily_start_time']);
+                $dayEnd   = Carbon::createFromFormat('Y-m-d H:i', $date->format('Y-m-d') . ' ' . $data['daily_end_time']);
+
+                for ($slotStart = $dayStart->copy(); $slotStart->copy()->addMinutes($duration)->lte($dayEnd); $slotStart->addMinutes($duration)) {
+                    $startStr = $slotStart->format('H:i:s');
+                    $endStr   = $slotStart->copy()->addMinutes($duration)->format('H:i:s');
+
+                    if ($this->slots->hasOverlap($courtId, $date->format('Y-m-d'), $startStr, $endStr)) {
+                        $skipped++;
+
+                        continue;
+                    }
+
+                    $created[] = $this->slots->create([
+                        'court_id'   => $courtId,
+                        'date'       => $date->format('Y-m-d'),
+                        'start_time' => $startStr,
+                        'end_time'   => $endStr,
+                        'is_booked'  => false,
+                    ]);
+                }
+            }
+        });
+
+        return [
+            'created'       => $created,
+            'created_count' => count($created),
+            'skipped_count' => $skipped,
+        ];
     }
 
     /**
