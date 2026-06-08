@@ -180,6 +180,23 @@
             ],
             "url": { "raw": "{{base_url}}/admin/courts/1", "host": ["{{base_url}}"], "path": ["admin", "courts", "1"] }
           }
+        },
+        {
+          "name": "Upload court image (bonus)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "image", "type": "file", "src": [], "description": "jpg/jpeg/png/webp, max 2MB" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/admin/courts/1/image", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "image"] }
+          }
         }
       ]
     },
