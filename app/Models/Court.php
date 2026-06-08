@@ -21,6 +21,7 @@ class Court extends Model
         'sport_type',
         'hourly_rate',
         'is_active',
+        'image_path',
     ];
 
     /**

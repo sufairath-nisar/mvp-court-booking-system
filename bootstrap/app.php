@@ -21,6 +21,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => EnsureUserHasRole::class,
         ]);
+
+        // Simple rate limiting on every API route (limiter defined in AppServiceProvider).
+        $middleware->api(append: [
+            'throttle:api',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Force JSON for every API request and normalise the error envelope.

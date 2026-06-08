@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\BookingStatus;
+use App\Events\BookingCancelled;
+use App\Events\BookingCreated;
 use App\Exceptions\BusinessRuleException;
 use App\Models\Booking;
 use App\Models\User;
@@ -31,7 +33,7 @@ class BookingService
      */
     public function book(User $user, int $slotId): Booking
     {
-        return DB::transaction(function () use ($user, $slotId) {
+        $booking = DB::transaction(function () use ($user, $slotId) {
             $slot = $this->slots->findForUpdate($slotId);
 
             if (! $slot) {
@@ -58,6 +60,11 @@ class BookingService
 
             return $booking->load(['court', 'slot']);
         });
+
+        // Notify the consumer (mail) after the booking is durably committed.
+        BookingCreated::dispatch($booking);
+
+        return $booking;
     }
 
     /**
@@ -67,7 +74,7 @@ class BookingService
      */
     public function cancel(User $user, int $bookingId): Booking
     {
-        return DB::transaction(function () use ($user, $bookingId) {
+        $booking = DB::transaction(function () use ($user, $bookingId) {
             try {
                 $booking = $this->bookings->findOrFail($bookingId);
             } catch (ModelNotFoundException) {
@@ -96,6 +103,11 @@ class BookingService
 
             return $booking->refresh()->load(['court', 'slot']);
         });
+
+        // Notify the consumer (mail) after the cancellation is durably committed.
+        BookingCancelled::dispatch($booking);
+
+        return $booking;
     }
 
     /**

@@ -115,6 +115,7 @@ Base URL: `http://localhost:8000/api`
 | GET    | `/admin/courts/{id}`  | Show court         |
 | PUT    | `/admin/courts/{id}`  | Update court       |
 | DELETE | `/admin/courts/{id}`  | Delete court       |
+| POST   | `/admin/courts/{id}/image` | Upload court image (multipart, field `image`) |
 
 ### Admin — Slots (`role:admin`)
 | Method | Endpoint             | Description                          |
@@ -204,6 +205,25 @@ After slot start → **422** `"Bookings can only be cancelled before the slot st
 - **Role isolation** — `role:admin` / `role:consumer` middleware on every protected route.
 
 ---
+
+## Bonus features (optional extras)
+
+Three optional enhancements, added without changing existing behaviour:
+
+1. **Booking notifications** — creating or cancelling a booking fires a domain event
+   (`BookingCreated` / `BookingCancelled`); a listener sends the consumer a mail
+   notification (`BookingConfirmedNotification` / `BookingCancelledNotification`).
+   The default `MAIL_MAILER=log` writes the email to `storage/logs/laravel.log`
+   (no SMTP needed); switch to `smtp` in production.
+2. **Rate limiting** — a named `api` limiter (in `AppServiceProvider`) is applied to
+   every API route via `throttle:api` in `bootstrap/app.php`: 120 req/min per
+   authenticated user, 30 req/min per guest IP. Responses carry `X-RateLimit-*`
+   headers; over-limit requests get `429`.
+3. **Court images** — admins can upload a court image:
+   `POST /api/admin/courts/{id}/image` (multipart, field `image`; jpg/png/webp, ≤2 MB).
+   Stored on the `public` disk; the path is saved in `courts.image_path` and exposed
+   as `image_url` in the court response. Run `php artisan storage:link` once so the
+   files are web-accessible.
 
 ## Postman
 

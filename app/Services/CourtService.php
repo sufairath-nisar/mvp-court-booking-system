@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Court;
 use App\Repositories\Contracts\CourtRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 class CourtService
 {
@@ -61,5 +63,22 @@ class CourtService
         $court = $this->courts->findOrFail($id);
 
         $this->courts->delete($court);
+    }
+
+    /**
+     * Store (or replace) a court's image on the public disk and persist its path.
+     */
+    public function uploadImage(int $id, UploadedFile $file): Court
+    {
+        $court = $this->courts->findOrFail($id);
+
+        // Remove the previous image, if any, to avoid orphaned files.
+        if ($court->image_path) {
+            Storage::disk('public')->delete($court->image_path);
+        }
+
+        $path = $file->store('courts', 'public');
+
+        return $this->courts->update($court, ['image_path' => $path]);
     }
 }

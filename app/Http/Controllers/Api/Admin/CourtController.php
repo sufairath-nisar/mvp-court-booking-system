@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Court\StoreCourtRequest;
 use App\Http\Requests\Court\UpdateCourtRequest;
+use App\Http\Requests\Court\UploadCourtImageRequest;
 use App\Http\Resources\CourtResource;
 use App\Services\CourtService;
 use Illuminate\Http\JsonResponse;
@@ -89,5 +90,20 @@ class CourtController extends Controller
         $this->courtService->delete($id);
 
         return $this->successResponse(null, 'Court deleted successfully.');
+    }
+
+    /**
+     * Upload (or replace) a court's image.
+     *
+     * POST /api/admin/courts/{id}/image  (multipart/form-data, field: image)
+     */
+    public function uploadImage(UploadCourtImageRequest $request, int $id): JsonResponse
+    {
+        $court = $this->courtService->uploadImage($id, $request->file('image'));
+
+        return $this->successResponse(
+            new CourtResource($court),
+            'Court image uploaded successfully.'
+        );
     }
 }

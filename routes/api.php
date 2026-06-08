@@ -31,6 +31,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
     ->prefix('admin')
     ->group(function () {
         // Court management
+        Route::post('courts/{court}/image', [CourtController::class, 'uploadImage']);
         Route::apiResource('courts', CourtController::class);
 
         // Slot management (no `show` — slots are listed/browsed in bulk)
