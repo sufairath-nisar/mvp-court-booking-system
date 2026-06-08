@@ -245,7 +245,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"court_id\": 1,\n  \"start_date\": \"2026-12-01\",\n  \"end_date\": \"2026-12-31\",\n  \"schedules\": [\n    { \"days_of_week\": [1, 2, 3, 4], \"start_time\": \"09:00\", \"end_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"days_of_week\": [5], \"start_time\": \"08:00\", \"end_time\": \"12:00\", \"slot_duration\": 60 }\n  ]\n}",
+              "raw": "{\n  \"court_id\": 1,\n  \"slot_duration\": 60,\n  \"dates\": [\n    { \"date\": \"2026-12-10\", \"start_time\": \"09:00\", \"end_time\": \"21:00\" },\n    { \"date\": \"2026-12-12\", \"start_time\": \"08:00\", \"end_time\": \"12:00\" },\n    { \"date\": \"2026-12-15\", \"start_time\": \"09:00\", \"end_time\": \"21:00\" }\n  ]\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/admin/slots/bulk", "host": ["{{base_url}}"], "path": ["admin", "slots", "bulk"] }

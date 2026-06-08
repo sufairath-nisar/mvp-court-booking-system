@@ -126,41 +126,26 @@ Base URL: `http://localhost:8000/api`
 | PUT    | `/admin/slots/{id}`  | Update slot                          |
 | DELETE | `/admin/slots/{id}`  | Delete slot                          |
 
-**Bulk slot generation** — instead of creating each slot by hand, one request builds
-an entire schedule across `[start_date, end_date]`. Existing/overlapping slots are
-skipped (not errored); the response returns `created_count` and `skipped_count`.
-Days-of-week use 0=Sun … 6=Sat.
+**Bulk slot generation** — the admin selects specific dates (from a calendar on the
+front end), each with its own start/end time, and the API creates all the 1-hour slots
+in a single request — instead of creating each slot by hand. Some dates can share the
+same window, others can differ. Existing/overlapping slots are skipped (not errored);
+the response returns `created_count` and `skipped_count`.
 
-*Flat form* — same hours every day (optionally restricted to `days_of_week`):
 ```json
 POST /api/admin/slots/bulk
 {
   "court_id": 1,
-  "start_date": "2026-07-01",
-  "end_date": "2026-07-07",
-  "daily_start_time": "09:00",
-  "daily_end_time": "21:00",
   "slot_duration": 60,
-  "days_of_week": [1, 2, 3, 4, 5]
-}
-```
-
-*Per-day form* — different hours/durations per day via `schedules` (takes precedence
-over the flat form). e.g. Mondays 09:00–21:00 but Fridays only 08:00–12:00:
-```json
-POST /api/admin/slots/bulk
-{
-  "court_id": 1,
-  "start_date": "2026-07-01",
-  "end_date": "2026-07-31",
-  "schedules": [
-    { "days_of_week": [1], "start_time": "09:00", "end_time": "21:00", "slot_duration": 60 },
-    { "days_of_week": [5], "start_time": "08:00", "end_time": "12:00", "slot_duration": 60 }
+  "dates": [
+    { "date": "2026-07-10", "start_time": "09:00", "end_time": "21:00" },
+    { "date": "2026-07-12", "start_time": "08:00", "end_time": "12:00" },
+    { "date": "2026-07-15", "start_time": "09:00", "end_time": "21:00" }
   ]
 }
 ```
-Each schedule steps from `start_time` to `end_time` in `slot_duration`-minute blocks
-on its `days_of_week`; omit `days_of_week` to apply to every day in the range.
+Each entry's window is sliced into `slot_duration`-minute blocks (default 60 = 1 hour);
+a date may override `slot_duration`. Up to 120 dates per request.
 
 ### Consumer — Booking (`role:consumer`)
 | Method | Endpoint                                   | Description                          |
