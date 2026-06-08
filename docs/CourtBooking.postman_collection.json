@@ -1,0 +1,313 @@
+{
+  "info": {
+    "name": "Court Booking System API",
+    "_postman_id": "court-booking-system-collection",
+    "description": "REST API for the Court Booking System (Laravel + Sanctum). Set the {{base_url}} variable; tokens are captured automatically on login/register.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000/api" },
+    { "key": "token", "value": "" },
+    { "key": "admin_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register (consumer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.token) { pm.collectionVariables.set('token', json.data.token); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Player\",\n  \"email\": \"jane@example.com\",\n  \"password\": \"Password123!\",\n  \"password_confirmation\": \"Password123!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Login (consumer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.token) { pm.collectionVariables.set('token', json.data.token); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.data && json.data.token) { pm.collectionVariables.set('admin_token', json.data.token); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@courtbooking.test\",\n  \"password\": \"Password123!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Courts",
+      "item": [
+        {
+          "name": "List courts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/courts", "host": ["{{base_url}}"], "path": ["admin", "courts"] }
+          }
+        },
+        {
+          "name": "Create court",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Center Court\",\n  \"location\": \"Block A\",\n  \"sport_type\": \"tennis\",\n  \"hourly_rate\": 25.00,\n  \"is_active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/courts", "host": ["{{base_url}}"], "path": ["admin", "courts"] }
+          }
+        },
+        {
+          "name": "Show court",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/courts/1", "host": ["{{base_url}}"], "path": ["admin", "courts", "1"] }
+          }
+        },
+        {
+          "name": "Update court",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hourly_rate\": 30.00,\n  \"is_active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/courts/1", "host": ["{{base_url}}"], "path": ["admin", "courts", "1"] }
+          }
+        },
+        {
+          "name": "Delete court",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/courts/1", "host": ["{{base_url}}"], "path": ["admin", "courts", "1"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Slots",
+      "item": [
+        {
+          "name": "List slots",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/slots?court_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "slots"],
+              "query": [{ "key": "court_id", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Create slot",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"court_id\": 1,\n  \"date\": \"2026-06-10\",\n  \"start_time\": \"08:00\",\n  \"end_time\": \"09:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/slots", "host": ["{{base_url}}"], "path": ["admin", "slots"] }
+          }
+        },
+        {
+          "name": "Update slot",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_time\": \"09:00\",\n  \"end_time\": \"10:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/slots/1", "host": ["{{base_url}}"], "path": ["admin", "slots", "1"] }
+          }
+        },
+        {
+          "name": "Delete slot",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/slots/1", "host": ["{{base_url}}"], "path": ["admin", "slots", "1"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Consumer",
+      "item": [
+        {
+          "name": "Browse courts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/consumer/courts", "host": ["{{base_url}}"], "path": ["consumer", "courts"] }
+          }
+        },
+        {
+          "name": "Available slots for court",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/consumer/courts/1/available-slots",
+              "host": ["{{base_url}}"],
+              "path": ["consumer", "courts", "1", "available-slots"]
+            }
+          }
+        },
+        {
+          "name": "Book a slot",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slot_id\": 5\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/consumer/bookings", "host": ["{{base_url}}"], "path": ["consumer", "bookings"] }
+          }
+        },
+        {
+          "name": "Cancel booking",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/consumer/bookings/1/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["consumer", "bookings", "1", "cancel"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
