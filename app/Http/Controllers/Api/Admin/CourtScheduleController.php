@@ -91,7 +91,16 @@ class CourtScheduleController extends Controller
             $data['start_date'],
             $data['end_date'],
             $data['exclude_dates'] ?? [],
+            $data['preview'] ?? false,
         );
+
+        if (! empty($result['preview'])) {
+            return $this->successResponse(
+                $result,
+                "Preview: {$result['would_create']} slot(s) would be generated, {$result['would_skip']} skipped.",
+                200
+            );
+        }
 
         return $this->successResponse(
             $result,

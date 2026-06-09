@@ -139,10 +139,11 @@ class ScheduleService
      */
     /**
      * @param array<int, string> $excludeDates One-off dates (Y-m-d) to skip for this run.
+     * @param bool $preview When true, compute counts WITHOUT saving any slots.
      *
      * @throws BusinessRuleException
      */
-    public function generateSlots(int $courtId, string $startDate, string $endDate, array $excludeDates = []): array
+    public function generateSlots(int $courtId, string $startDate, string $endDate, array $excludeDates = [], bool $preview = false): array
     {
         $this->courts->findOrFail($courtId);
 
@@ -158,26 +159,57 @@ class ScheduleService
             ->keyBy(fn (CourtScheduleException $e) => $e->date->format('Y-m-d'));
         $excluded = array_flip($excludeDates);
 
+        // Preview reads only (no writes); a real run persists inside a transaction.
+        if ($preview) {
+            return $this->runGeneration($courtId, $start, $end, $templates, $exceptions, $excluded, false);
+        }
+
+        return DB::transaction(fn () => $this->runGeneration($courtId, $start, $end, $templates, $exceptions, $excluded, true));
+    }
+
+    /**
+     * Walk the date range applying the schedule + exceptions; either persist slots
+     * or (preview) just tally what would be produced.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\CourtSchedule>  $templates
+     * @param  \Illuminate\Support\Collection<string, CourtScheduleException>  $exceptions
+     * @param  array<string, int>                                             $excluded
+     * @return array<string, mixed>
+     */
+    private function runGeneration(int $courtId, Carbon $start, Carbon $end, $templates, $exceptions, array $excluded, bool $persist): array
+    {
         $created = 0;
         $skipped = 0;
+        $byDate = [];
 
-        DB::transaction(function () use ($start, $end, $templates, $exceptions, $excluded, $courtId, &$created, &$skipped) {
-            for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-                $dateStr = $date->format('Y-m-d');
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $dateStr = $date->format('Y-m-d');
 
-                if (isset($excluded[$dateStr])) {
-                    continue; // explicitly excluded for this run
-                }
-
-                $window = $this->resolveWindow($date, $templates, $exceptions);
-
-                if ($window === null) {
-                    continue; // closed that day (no template, inactive, or an explicit closure)
-                }
-
-                $this->sliceDay($courtId, $dateStr, $window['open'], $window['close'], $window['duration'], $created, $skipped);
+            if (isset($excluded[$dateStr])) {
+                continue; // explicitly excluded for this run
             }
-        });
+
+            $window = $this->resolveWindow($date, $templates, $exceptions);
+
+            if ($window === null) {
+                continue; // closed that day (no template, inactive, or an explicit closure)
+            }
+
+            $made = $this->sliceDay($courtId, $dateStr, $window['open'], $window['close'], $window['duration'], $persist, $created, $skipped);
+
+            if ($made > 0) {
+                $byDate[$dateStr] = $made;
+            }
+        }
+
+        if (! $persist) {
+            return [
+                'preview'      => true,
+                'would_create' => $created,
+                'would_skip'   => $skipped,
+                'by_date'      => $byDate,
+            ];
+        }
 
         return ['created_count' => $created, 'skipped_count' => $skipped];
     }
@@ -226,12 +258,16 @@ class ScheduleService
     }
 
     /**
-     * Slice one date's [open, close] window into fixed-length slots and create them.
+     * Slice one date's [open, close] window into fixed-length slots.
+     *
+     * When $persist is true the slots are created; otherwise (preview) nothing is
+     * written. Returns how many slots were (or would be) created for this date.
      */
-    private function sliceDay(int $courtId, string $date, string $open, string $close, int $duration, int &$created, int &$skipped): void
+    private function sliceDay(int $courtId, string $date, string $open, string $close, int $duration, bool $persist, int &$created, int &$skipped): int
     {
-        $cursor  = Carbon::parse("{$date} {$open}");
-        $dayEnd  = Carbon::parse("{$date} {$close}");
+        $cursor = Carbon::parse("{$date} {$open}");
+        $dayEnd = Carbon::parse("{$date} {$close}");
+        $made = 0;
 
         while ($cursor->copy()->addMinutes($duration)->lte($dayEnd)) {
             $startStr = $cursor->format('H:i:s');
@@ -240,17 +276,22 @@ class ScheduleService
             if ($this->slots->hasOverlap($courtId, $date, $startStr, $endStr)) {
                 $skipped++;
             } else {
-                $this->slots->create([
-                    'court_id'   => $courtId,
-                    'date'       => $date,
-                    'start_time' => $startStr,
-                    'end_time'   => $endStr,
-                    'is_booked'  => false,
-                ]);
+                if ($persist) {
+                    $this->slots->create([
+                        'court_id'   => $courtId,
+                        'date'       => $date,
+                        'start_time' => $startStr,
+                        'end_time'   => $endStr,
+                        'is_booked'  => false,
+                    ]);
+                }
                 $created++;
+                $made++;
             }
 
             $cursor->addMinutes($duration);
         }
+
+        return $made;
     }
 }

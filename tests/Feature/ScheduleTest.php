@@ -152,6 +152,33 @@ class ScheduleTest extends TestCase
             ->assertJsonPath('data.created_count', 3); // only the 2nd Monday
     }
 
+    public function test_preview_returns_counts_without_saving_any_slots(): void
+    {
+        $admin = $this->admin();
+        $court = Court::factory()->create();
+        $monday = Carbon::parse('next monday');
+
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", [
+            'schedule' => [
+                ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
+            ],
+        ])->assertOk();
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [
+                'start_date' => $monday->format('Y-m-d'),
+                'end_date'   => $monday->format('Y-m-d'),
+                'preview'    => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.preview', true)
+            ->assertJsonPath('data.would_create', 3)
+            ->assertJsonPath("data.by_date.{$monday->format('Y-m-d')}", 3);
+
+        // Nothing was persisted.
+        $this->assertDatabaseCount('court_slots', 0);
+    }
+
     public function test_a_consumer_cannot_manage_the_schedule(): void
     {
         $consumer = User::factory()->create();

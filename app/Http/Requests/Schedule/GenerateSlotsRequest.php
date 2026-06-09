@@ -27,6 +27,7 @@ class GenerateSlotsRequest extends FormRequest
             'end_date'        => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
             'exclude_dates'   => ['sometimes', 'array'],
             'exclude_dates.*' => ['date_format:Y-m-d'],
+            'preview'         => ['sometimes', 'boolean'], // true => return counts without saving
         ];
     }
 }
