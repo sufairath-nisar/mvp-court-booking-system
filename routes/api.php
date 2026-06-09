@@ -38,6 +38,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         // Weekly schedule (recurring template) & date exceptions (Eid/holidays)
         Route::get('courts/{court}/schedule', [CourtScheduleController::class, 'showSchedule']);
         Route::put('courts/{court}/schedule', [CourtScheduleController::class, 'updateSchedule']);
+        Route::patch('courts/{court}/schedule', [CourtScheduleController::class, 'updateScheduleDay']);
         Route::get('courts/{court}/schedule-exceptions', [CourtScheduleController::class, 'listExceptions']);
         Route::post('courts/{court}/schedule-exceptions', [CourtScheduleController::class, 'storeException']);
         Route::delete('courts/{court}/schedule-exceptions/{exception}', [CourtScheduleController::class, 'destroyException']);

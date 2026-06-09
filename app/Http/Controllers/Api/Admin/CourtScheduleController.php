@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Schedule\SetCourtScheduleRequest;
 use App\Http\Requests\Schedule\StoreScheduleExceptionRequest;
+use App\Http\Requests\Schedule\UpdateScheduleDayRequest;
 use App\Http\Resources\CourtScheduleExceptionResource;
 use App\Http\Resources\CourtScheduleResource;
 use App\Services\ScheduleService;
@@ -34,6 +35,21 @@ class CourtScheduleController extends Controller
     public function updateSchedule(SetCourtScheduleRequest $request, int $court): JsonResponse
     {
         $schedule = $this->scheduleService->setWeeklySchedule($court, $request->validated()['schedule']);
+
+        return $this->successResponse(
+            CourtScheduleResource::collection($schedule),
+            'Weekly schedule updated successfully.'
+        );
+    }
+
+    /**
+     * Update a single weekday without resending the whole schedule.
+     *
+     * PATCH /api/admin/courts/{court}/schedule
+     */
+    public function updateScheduleDay(UpdateScheduleDayRequest $request, int $court): JsonResponse
+    {
+        $schedule = $this->scheduleService->updateDaySchedule($court, $request->validated());
 
         return $this->successResponse(
             CourtScheduleResource::collection($schedule),

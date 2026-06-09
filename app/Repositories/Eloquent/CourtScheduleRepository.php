@@ -30,4 +30,15 @@ class CourtScheduleRepository implements CourtScheduleRepositoryInterface
 
         return $this->forCourt($court->id);
     }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function upsertDay(Court $court, array $row): CourtSchedule
+    {
+        return $court->schedules()->updateOrCreate(
+            ['day_of_week' => $row['day_of_week']],
+            $row,
+        );
+    }
 }

@@ -24,6 +24,7 @@ class CourtSlot extends Model
         'day_of_week',
         'start_time',
         'end_time',
+        'is_active',
     ];
 
     /**
@@ -35,6 +36,7 @@ class CourtSlot extends Model
     {
         return [
             'day_of_week' => 'integer',
+            'is_active'   => 'boolean',
         ];
     }
 

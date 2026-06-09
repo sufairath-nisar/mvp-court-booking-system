@@ -66,7 +66,45 @@ class ScheduleService
             ];
         }
 
-        return DB::transaction(fn () => $this->schedules->replaceForCourt($court, $rows));
+        return DB::transaction(function () use ($court, $rows) {
+            $schedule = $this->schedules->replaceForCourt($court, $rows);
+
+            // Saving the schedule re-shapes the court's recurring slots to the new hours.
+            $this->reconcileSlots($court->id);
+
+            return $schedule;
+        });
+    }
+
+    /**
+     * Update a SINGLE weekday of the court's schedule without disturbing the others,
+     * then reconcile that court's recurring slots to the change.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @throws BusinessRuleException
+     */
+    public function updateDaySchedule(int $courtId, array $data): Collection
+    {
+        $court = $this->courts->findOrFail($courtId);
+
+        if ($data['open_time'] >= $data['close_time']) {
+            throw new BusinessRuleException('open_time must be before close_time.');
+        }
+
+        return DB::transaction(function () use ($court, $data) {
+            $this->schedules->upsertDay($court, [
+                'day_of_week'   => (int) $data['day_of_week'],
+                'open_time'     => $data['open_time'],
+                'close_time'    => $data['close_time'],
+                'slot_duration' => (int) ($data['slot_duration'] ?? 60),
+                'is_active'     => $data['is_active'] ?? true,
+            ]);
+
+            $this->reconcileSlots($court->id);
+
+            return $this->schedules->forCourt($court->id);
+        });
     }
 
     /**
@@ -129,23 +167,14 @@ class ScheduleService
     }
 
     /**
-     * Generate concrete bookable slots for a date range from the weekly schedule,
-     * with date exceptions overriding it (closed days are skipped). Overlapping
-     * slots are skipped, not errored.
-     *
-     * @return array{created_count: int, skipped_count: int}
-     *
-     * @throws BusinessRuleException
-     */
-    /**
-     * Create the court's RECURRING slots by expanding its weekly schedule.
+     * Create (or re-sync) the court's RECURRING slots from its weekly schedule.
      *
      * Each active schedule row (day_of_week, open–close, duration) is sliced into
      * fixed-length recurring windows — e.g. Mon 09:00–12:00 ⇒ 3 slots that apply to
      * EVERY Monday. No dates are involved; the booked date lives on the booking.
-     * Idempotent: re-running upserts (won't duplicate or disturb booked slots).
+     * Idempotent: re-running won't duplicate. Delegates to reconcileSlots.
      *
-     * @return array{created_count: int, existing_count: int}
+     * @return array{created_count: int, existing_count: int, deactivated_count: int, deleted_count: int}
      *
      * @throws BusinessRuleException
      */
@@ -153,36 +182,79 @@ class ScheduleService
     {
         $this->courts->findOrFail($courtId);
 
-        $schedules = $this->schedules->forCourt($courtId)->where('is_active', true);
-
-        if ($schedules->isEmpty()) {
+        if ($this->schedules->forCourt($courtId)->where('is_active', true)->isEmpty()) {
             throw new BusinessRuleException('Set the weekly schedule before generating slots.');
         }
 
-        $created = 0;
-        $existing = 0;
+        return DB::transaction(fn () => $this->reconcileSlots($courtId));
+    }
 
-        DB::transaction(function () use ($schedules, $courtId, &$created, &$existing) {
-            foreach ($schedules as $schedule) {
-                $duration = $schedule->slot_duration;
-                $cursor   = Carbon::parse((string) $schedule->open_time);
-                $dayEnd   = Carbon::parse((string) $schedule->close_time);
+    /**
+     * Reconcile a court's recurring slots to its current weekly schedule.
+     *
+     * - A window in the new schedule that already exists is kept (and re-activated).
+     * - A new window is created.
+     * - A slot no longer in the schedule (stale) is DELETED if it has no active
+     *   bookings, otherwise DEACTIVATED — never deleted, because the bookings table
+     *   cascade-deletes on slot removal and we must not destroy a real reservation.
+     *
+     * Must run inside a transaction.
+     *
+     * @return array{created_count: int, existing_count: int, deactivated_count: int, deleted_count: int}
+     */
+    private function reconcileSlots(int $courtId): array
+    {
+        $schedules = $this->schedules->forCourt($courtId)->where('is_active', true);
 
-                while ($cursor->copy()->addMinutes($duration)->lte($dayEnd)) {
-                    $slot = $this->slots->upsertRecurring(
-                        $courtId,
-                        $schedule->day_of_week,
-                        $cursor->format('H:i:s'),
-                        $cursor->copy()->addMinutes($duration)->format('H:i:s'),
-                    );
+        $created = $existing = $deactivated = $deleted = 0;
 
-                    $slot->wasRecentlyCreated ? $created++ : $existing++;
+        // Build the desired set of windows, keyed by "day|HH:MM:SS".
+        $desired = [];
+        foreach ($schedules as $schedule) {
+            $duration = $schedule->slot_duration;
+            $cursor   = Carbon::parse((string) $schedule->open_time);
+            $dayEnd   = Carbon::parse((string) $schedule->close_time);
 
-                    $cursor->addMinutes($duration);
-                }
+            while ($cursor->copy()->addMinutes($duration)->lte($dayEnd)) {
+                $start = $cursor->format('H:i:s');
+                $end   = $cursor->copy()->addMinutes($duration)->format('H:i:s');
+                $desired[$schedule->day_of_week . '|' . $start] = [
+                    'day'   => $schedule->day_of_week,
+                    'start' => $start,
+                    'end'   => $end,
+                ];
+                $cursor->addMinutes($duration);
             }
-        });
+        }
 
-        return ['created_count' => $created, 'existing_count' => $existing];
+        // Create / re-activate every desired window.
+        foreach ($desired as $window) {
+            $slot = $this->slots->upsertRecurring($courtId, $window['day'], $window['start'], $window['end']);
+            $slot->wasRecentlyCreated ? $created++ : $existing++;
+        }
+
+        // Handle slots that are no longer part of the schedule.
+        foreach ($this->slots->allForCourt($courtId) as $slot) {
+            $key = $slot->day_of_week . '|' . Carbon::parse((string) $slot->start_time)->format('H:i:s');
+
+            if (isset($desired[$key])) {
+                continue; // still in the schedule
+            }
+
+            if ($this->slots->hasActiveBookings($slot)) {
+                $this->slots->update($slot, ['is_active' => false]); // keep the booking, hide the slot
+                $deactivated++;
+            } else {
+                $this->slots->delete($slot);
+                $deleted++;
+            }
+        }
+
+        return [
+            'created_count'     => $created,
+            'existing_count'    => $existing,
+            'deactivated_count' => $deactivated,
+            'deleted_count'     => $deleted,
+        ];
     }
 }

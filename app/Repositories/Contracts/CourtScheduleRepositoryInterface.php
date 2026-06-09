@@ -18,4 +18,12 @@ interface CourtScheduleRepositoryInterface
      * @param array<int, array<string, mixed>> $rows
      */
     public function replaceForCourt(Court $court, array $rows): Collection;
+
+    /**
+     * Create or update a single weekday's schedule row (keyed by day_of_week),
+     * leaving the court's other days untouched.
+     *
+     * @param array<string, mixed> $row
+     */
+    public function upsertDay(Court $court, array $row): \App\Models\CourtSchedule;
 }

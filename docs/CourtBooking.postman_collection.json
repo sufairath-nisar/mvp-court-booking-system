@@ -220,7 +220,7 @@
           }
         },
         {
-          "name": "Create slots (generate recurring from schedule)",
+          "name": "Re-sync slots (regenerate from schedule)",
           "request": {
             "method": "POST",
             "header": [
@@ -278,6 +278,22 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"schedule\": [\n    { \"day_of_week\": 1, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 2, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 3, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 4, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 5, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 6, \"open_time\": \"08:00\", \"close_time\": \"12:00\", \"slot_duration\": 60 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/courts/1/schedule", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "schedule"] }
+          }
+        },
+        {
+          "name": "Update one schedule day (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day_of_week\": 1,\n  \"open_time\": \"07:30\",\n  \"close_time\": \"20:30\",\n  \"slot_duration\": 60\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/admin/courts/1/schedule", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "schedule"] }

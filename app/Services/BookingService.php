@@ -48,6 +48,10 @@ class BookingService
             throw new BusinessRuleException('This slot is not available on the selected date.');
         }
 
+        if (! $slot->is_active) {
+            throw new BusinessRuleException('This slot is no longer available.');
+        }
+
         if ($this->slotHasStarted($slot, $bookingDate)) {
             throw new BusinessRuleException('This slot is in the past and can no longer be booked.');
         }
@@ -55,7 +59,7 @@ class BookingService
         $this->assertDateIsOpen($slot, $bookingDate);
 
         $booking = DB::transaction(function () use ($user, $slot, $bookingDate) {
-            if ($this->bookings->activeExistsForSlotDate($slot->id, $bookingDate)) {
+            if ($this->bookings->activeOverlapsForCourtDate($slot->court_id, $bookingDate, $slot->start_time, $slot->end_time)) {
                 throw new BusinessRuleException('This slot has already been booked for that date.');
             }
 

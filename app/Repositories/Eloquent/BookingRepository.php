@@ -19,12 +19,15 @@ class BookingRepository implements BookingRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function activeExistsForSlotDate(int $slotId, string $date): bool
+    public function activeOverlapsForCourtDate(int $courtId, string $date, string $startTime, string $endTime): bool
     {
         return Booking::query()
-            ->where('slot_id', $slotId)
-            ->where('booking_date', $date)
-            ->where('status', BookingStatus::BOOKED->value)
+            ->where('bookings.court_id', $courtId)
+            ->where('bookings.booking_date', $date)
+            ->where('bookings.status', BookingStatus::BOOKED->value)
+            ->join('court_slots', 'bookings.slot_id', '=', 'court_slots.id')
+            ->where('court_slots.start_time', '<', $endTime)
+            ->where('court_slots.end_time', '>', $startTime)
             ->lockForUpdate()
             ->exists();
     }

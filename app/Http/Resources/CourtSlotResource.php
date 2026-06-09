@@ -25,6 +25,7 @@ class CourtSlotResource extends JsonResource
             'day_name'    => self::DAY_NAMES[$this->day_of_week] ?? null,
             'start_time'  => substr((string) $this->start_time, 0, 5),
             'end_time'    => substr((string) $this->end_time, 0, 5),
+            'is_active'   => (bool) $this->is_active,
             'court'       => new CourtResource($this->whenLoaded('court')),
             'created_at'  => $this->created_at?->toIso8601String(),
         ];

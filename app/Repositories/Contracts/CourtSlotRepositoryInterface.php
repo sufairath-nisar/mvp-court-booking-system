@@ -16,10 +16,20 @@ interface CourtSlotRepositoryInterface
     public function paginate(array $filters = [], int $perPage = 15): LengthAwarePaginator;
 
     /**
-     * Recurring slots for a court on a given day-of-week that are NOT already booked
-     * on the given date (status = booked).
+     * Active recurring slots for a court on a given day-of-week whose time window does
+     * NOT overlap any active booking on the given date.
      */
     public function availableForCourtOnDate(int $courtId, int $dayOfWeek, string $date): Collection;
+
+    /**
+     * All slots for a court (active and inactive) — used when reconciling to a schedule.
+     */
+    public function allForCourt(int $courtId): Collection;
+
+    /**
+     * Whether the slot has any active (booked) booking, on any date.
+     */
+    public function hasActiveBookings(CourtSlot $slot): bool;
 
     /**
      * Find a slot by id or fail.

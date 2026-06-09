@@ -12,10 +12,13 @@ interface BookingRepositoryInterface
     public function findOrFail(int $id): Booking;
 
     /**
-     * Whether an active (booked) booking already exists for this slot on this date.
+     * Whether an active (booked) booking on this court+date occupies a time window that
+     * overlaps the given [startTime, endTime). Compares by time so a booking on a now-
+     * deactivated slot still blocks an overlapping current slot.
+     *
      * Locks the matching rows FOR UPDATE — must be called inside a transaction.
      */
-    public function activeExistsForSlotDate(int $slotId, string $date): bool;
+    public function activeOverlapsForCourtDate(int $courtId, string $date, string $startTime, string $endTime): bool;
 
     /**
      * Create a new booking.

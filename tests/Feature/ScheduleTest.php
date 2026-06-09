@@ -44,21 +44,17 @@ class ScheduleTest extends TestCase
             ->assertJsonPath('data.0.day_name', 'Monday');
     }
 
-    public function test_creating_slots_generates_recurring_slots_from_the_schedule(): void
+    public function test_setting_the_schedule_generates_recurring_slots(): void
     {
         $admin = $this->admin();
         $court = Court::factory()->create();
 
         // Mon 09:00-12:00 (3 recurring slots) + Tue 09:00-11:00 (2) = 5 recurring slots.
+        // Saving the schedule generates the slots automatically.
         $this->setSchedule($admin, $court, [
             ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
             ['day_of_week' => 2, 'open_time' => '09:00', 'close_time' => '11:00', 'slot_duration' => 60],
         ]);
-
-        $this->actingAs($admin, 'sanctum')
-            ->postJson('/api/admin/slots', ['court_id' => $court->id])
-            ->assertCreated()
-            ->assertJsonPath('data.created_count', 5);
 
         $this->assertDatabaseCount('court_slots', 5);
         $this->assertDatabaseHas('court_slots', ['court_id' => $court->id, 'day_of_week' => 1, 'start_time' => '09:00:00']);
@@ -68,20 +64,130 @@ class ScheduleTest extends TestCase
     {
         $admin = $this->admin();
         $court = Court::factory()->create();
+
+        // Setting the schedule already generates the 3 Monday slots.
         $this->setSchedule($admin, $court, [
             ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
         ]);
+        $this->assertDatabaseCount('court_slots', 3);
 
-        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/slots', ['court_id' => $court->id])
-            ->assertCreated()->assertJsonPath('data.created_count', 3);
-
-        // Re-running creates nothing new; the 3 already exist.
+        // POST /admin/slots re-syncs; the 3 already exist, nothing new is created.
         $this->actingAs($admin, 'sanctum')->postJson('/api/admin/slots', ['court_id' => $court->id])
             ->assertCreated()
             ->assertJsonPath('data.created_count', 0)
             ->assertJsonPath('data.existing_count', 3);
 
         $this->assertDatabaseCount('court_slots', 3);
+    }
+
+    public function test_patch_updates_a_single_day_without_touching_the_others(): void
+    {
+        $admin = $this->admin();
+        $court = Court::factory()->create();
+
+        // Mon 09:00-12:00 (3) + Tue 09:00-11:00 (2) = 5 slots.
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
+            ['day_of_week' => 2, 'open_time' => '09:00', 'close_time' => '11:00', 'slot_duration' => 60],
+        ]);
+        $this->assertDatabaseCount('court_slots', 5);
+
+        // PATCH only Monday -> 09:00-13:00 (4 slots). Tuesday must be untouched (still 2).
+        $this->actingAs($admin, 'sanctum')
+            ->patchJson("/api/admin/courts/{$court->id}/schedule", [
+                'day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '13:00', 'slot_duration' => 60,
+            ])
+            ->assertOk()
+            ->assertJsonCount(2, 'data'); // both weekdays still present in the schedule
+
+        $this->assertDatabaseCount('court_schedules', 2); // Tuesday not deleted
+        $this->assertEquals(4, \App\Models\CourtSlot::where('court_id', $court->id)->where('day_of_week', 1)->count());
+        $this->assertEquals(2, \App\Models\CourtSlot::where('court_id', $court->id)->where('day_of_week', 2)->count());
+    }
+
+    public function test_changing_the_schedule_regenerates_slots_to_the_new_hours(): void
+    {
+        $admin = $this->admin();
+        $court = Court::factory()->create();
+
+        // Monday 09:00-12:00 @60 -> 3 slots (09-10, 10-11, 11-12).
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
+        ]);
+        $this->assertDatabaseCount('court_slots', 3);
+
+        // Shift to 09:30-12:30 @60 -> 3 NEW slots (09:30-10:30, 10:30-11:30, 11:30-12:30).
+        // None of the old slots are booked, so the stale ones are deleted: still 3 total.
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:30', 'close_time' => '12:30', 'slot_duration' => 60],
+        ]);
+
+        $this->assertDatabaseCount('court_slots', 3);
+        $this->assertDatabaseHas('court_slots', ['court_id' => $court->id, 'day_of_week' => 1, 'start_time' => '09:30:00']);
+        $this->assertDatabaseMissing('court_slots', ['court_id' => $court->id, 'day_of_week' => 1, 'start_time' => '09:00:00']);
+    }
+
+    public function test_a_booked_slot_survives_a_schedule_change_and_blocks_overlapping_new_slots(): void
+    {
+        $admin = $this->admin();
+        $consumer = User::factory()->create();
+        $court = Court::factory()->create();
+        $monday = Carbon::parse('next monday')->format('Y-m-d');
+
+        // Monday 09:00-11:00 @60 -> 09-10, 10-11.
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '11:00', 'slot_duration' => 60],
+        ]);
+
+        // Consumer books the 09:00-10:00 slot for next Monday.
+        $slotId = \App\Models\CourtSlot::where('court_id', $court->id)->where('start_time', '09:00:00')->first()->id;
+        $this->actingAs($consumer, 'sanctum')
+            ->postJson('/api/consumer/bookings', ['slot_id' => $slotId, 'booking_date' => $monday])
+            ->assertCreated();
+
+        // Admin shifts Monday to 09:30-11:30 @60 -> new 09:30-10:30, 10:30-11:30.
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:30', 'close_time' => '11:30', 'slot_duration' => 60],
+        ]);
+
+        // The booking is NOT destroyed: its old slot is kept but deactivated.
+        $this->assertDatabaseHas('bookings', ['slot_id' => $slotId, 'booking_date' => $monday, 'status' => 'booked']);
+        $this->assertDatabaseHas('court_slots', ['id' => $slotId, 'is_active' => false]);
+
+        // Availability for that Monday: 09:30-10:30 overlaps the booked 09:00-10:00 and is hidden;
+        // only 10:30-11:30 remains.
+        $this->actingAs($consumer, 'sanctum')
+            ->getJson("/api/consumer/courts/{$court->id}/available-slots?date={$monday}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.start_time', '10:30');
+    }
+
+    public function test_overlapping_slot_cannot_be_booked_on_a_date_with_an_existing_booking(): void
+    {
+        $admin = $this->admin();
+        $a = User::factory()->create();
+        $b = User::factory()->create();
+        $court = Court::factory()->create();
+        $monday = Carbon::parse('next monday')->format('Y-m-d');
+
+        // Two overlapping recurring slots exist on Monday: 09:00-10:00 and 09:30-10:30.
+        $early = \App\Models\CourtSlot::factory()->create([
+            'court_id' => $court->id, 'day_of_week' => 1, 'start_time' => '09:00:00', 'end_time' => '10:00:00',
+        ]);
+        $overlapping = \App\Models\CourtSlot::factory()->create([
+            'court_id' => $court->id, 'day_of_week' => 1, 'start_time' => '09:30:00', 'end_time' => '10:30:00',
+        ]);
+
+        $this->actingAs($a, 'sanctum')
+            ->postJson('/api/consumer/bookings', ['slot_id' => $early->id, 'booking_date' => $monday])
+            ->assertCreated();
+
+        // Booking the overlapping slot for the same date is rejected.
+        $this->actingAs($b, 'sanctum')
+            ->postJson('/api/consumer/bookings', ['slot_id' => $overlapping->id, 'booking_date' => $monday])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This slot has already been booked for that date.');
     }
 
     public function test_consumer_sees_available_slots_for_a_date(): void
