@@ -7,6 +7,7 @@ use App\Models\Court;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class ScheduleTest extends TestCase
@@ -16,6 +17,17 @@ class ScheduleTest extends TestCase
     private function admin(): User
     {
         return User::factory()->create(['role' => UserRole::ADMIN]);
+    }
+
+    /**
+     * Slots are created by generating from the schedule: POST /admin/slots with court_id.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function generate(User $admin, Court $court, array $payload = []): TestResponse
+    {
+        return $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/admin/slots', array_merge(['court_id' => $court->id], $payload));
     }
 
     public function test_admin_can_set_and_read_the_weekly_schedule(): void
@@ -42,28 +54,30 @@ class ScheduleTest extends TestCase
             ->assertJsonPath('data.0.day_name', 'Monday');
     }
 
+    private function setSchedule(User $admin, Court $court, array $rows): void
+    {
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/admin/courts/{$court->id}/schedule", ['schedule' => $rows])
+            ->assertOk();
+    }
+
     public function test_generates_slots_from_the_weekly_schedule(): void
     {
         $admin = $this->admin();
         $court = Court::factory()->create();
         $monday = Carbon::parse('next monday');
 
-        // Monday 09:00-12:00 (3 slots) + Tuesday 09:00-11:00 (2 slots).
-        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", [
-            'schedule' => [
-                ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
-                ['day_of_week' => 2, 'open_time' => '09:00', 'close_time' => '11:00', 'slot_duration' => 60],
-            ],
-        ])->assertOk();
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60], // Mon 3 slots
+            ['day_of_week' => 2, 'open_time' => '09:00', 'close_time' => '11:00', 'slot_duration' => 60], // Tue 2 slots
+        ]);
 
-        // Range covering exactly one Monday and one Tuesday.
-        $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [
-                'start_date' => $monday->format('Y-m-d'),
-                'end_date'   => $monday->copy()->addDay()->format('Y-m-d'),
-            ])
+        $this->generate($admin, $court, [
+            'start_date' => $monday->format('Y-m-d'),
+            'end_date'   => $monday->copy()->addDay()->format('Y-m-d'),
+        ])
             ->assertCreated()
-            ->assertJsonPath('data.created_count', 5); // 3 (Mon) + 2 (Tue)
+            ->assertJsonPath('data.created_count', 5);
 
         $this->assertDatabaseCount('court_slots', 5);
     }
@@ -74,28 +88,22 @@ class ScheduleTest extends TestCase
         $court = Court::factory()->create();
         $firstMonday = Carbon::parse('next monday');
 
-        // Every Monday: 09:00-12:00 => 3 slots.
-        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", [
-            'schedule' => [
-                ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
-            ],
-        ])->assertOk();
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
+        ]);
 
-        // First Monday is Eid -> closed.
         $this->actingAs($admin, 'sanctum')->postJson("/api/admin/courts/{$court->id}/schedule-exceptions", [
             'date'      => $firstMonday->format('Y-m-d'),
             'is_closed' => true,
             'reason'    => 'Eid',
         ])->assertCreated();
 
-        // Range spans the Eid Monday AND the following Monday.
-        $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [
-                'start_date' => $firstMonday->format('Y-m-d'),
-                'end_date'   => $firstMonday->copy()->addDays(7)->format('Y-m-d'),
-            ])
+        $this->generate($admin, $court, [
+            'start_date' => $firstMonday->format('Y-m-d'),
+            'end_date'   => $firstMonday->copy()->addDays(7)->format('Y-m-d'),
+        ])
             ->assertCreated()
-            ->assertJsonPath('data.created_count', 3); // Eid Monday skipped; only the 2nd Monday generates
+            ->assertJsonPath('data.created_count', 3); // Eid Monday skipped; only the 2nd Monday
     }
 
     public function test_an_exception_can_override_the_hours_for_a_date(): void
@@ -104,14 +112,10 @@ class ScheduleTest extends TestCase
         $court = Court::factory()->create();
         $monday = Carbon::parse('next monday');
 
-        // Normal Monday: 09:00-21:00 => 12 slots.
-        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", [
-            'schedule' => [
-                ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '21:00', 'slot_duration' => 60],
-            ],
-        ])->assertOk();
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '21:00', 'slot_duration' => 60], // 12 slots
+        ]);
 
-        // This Monday only runs 09:00-12:00 (half day) => 3 slots.
         $this->actingAs($admin, 'sanctum')->postJson("/api/admin/courts/{$court->id}/schedule-exceptions", [
             'date'       => $monday->format('Y-m-d'),
             'open_time'  => '09:00',
@@ -119,11 +123,10 @@ class ScheduleTest extends TestCase
             'reason'     => 'Eid half day',
         ])->assertCreated();
 
-        $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [
-                'start_date' => $monday->format('Y-m-d'),
-                'end_date'   => $monday->format('Y-m-d'),
-            ])
+        $this->generate($admin, $court, [
+            'start_date' => $monday->format('Y-m-d'),
+            'end_date'   => $monday->format('Y-m-d'),
+        ])
             ->assertCreated()
             ->assertJsonPath('data.created_count', 3); // override, not 12
     }
@@ -134,20 +137,15 @@ class ScheduleTest extends TestCase
         $court = Court::factory()->create();
         $firstMonday = Carbon::parse('next monday');
 
-        // Every Monday 09:00-12:00 => 3 slots.
-        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", [
-            'schedule' => [
-                ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
-            ],
-        ])->assertOk();
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
+        ]);
 
-        // Two Mondays in range, but exclude the first one for this run.
-        $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [
-                'start_date'    => $firstMonday->format('Y-m-d'),
-                'end_date'      => $firstMonday->copy()->addDays(7)->format('Y-m-d'),
-                'exclude_dates' => [$firstMonday->format('Y-m-d')],
-            ])
+        $this->generate($admin, $court, [
+            'start_date'    => $firstMonday->format('Y-m-d'),
+            'end_date'      => $firstMonday->copy()->addDays(7)->format('Y-m-d'),
+            'exclude_dates' => [$firstMonday->format('Y-m-d')],
+        ])
             ->assertCreated()
             ->assertJsonPath('data.created_count', 3); // only the 2nd Monday
     }
@@ -157,17 +155,14 @@ class ScheduleTest extends TestCase
         $admin = $this->admin();
         $court = Court::factory()->create();
 
-        // Every day of the week 09:00-12:00 (3 slots/day) so the count is
-        // independent of which weekday "today" is: 31 days (today..+30) * 3 = 93.
         $schedule = [];
         for ($day = 0; $day <= 6; $day++) {
             $schedule[] = ['day_of_week' => $day, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60];
         }
-        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", ['schedule' => $schedule])->assertOk();
+        $this->setSchedule($admin, $court, $schedule);
 
-        // No start_date / end_date -> defaults to today .. +30 days.
-        $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [])
+        // No dates -> today..+30 = 31 days * 3 = 93.
+        $this->generate($admin, $court)
             ->assertCreated()
             ->assertJsonPath('data.created_count', 93);
     }
@@ -177,15 +172,14 @@ class ScheduleTest extends TestCase
         $admin = $this->admin();
         $court = Court::factory()->create();
 
-        // Every day 09:00-12:00 (3 slots/day). days=7 => today..+7 = 8 days * 3 = 24.
         $schedule = [];
         for ($day = 0; $day <= 6; $day++) {
             $schedule[] = ['day_of_week' => $day, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60];
         }
-        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", ['schedule' => $schedule])->assertOk();
+        $this->setSchedule($admin, $court, $schedule);
 
-        $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/admin/courts/{$court->id}/generate-slots", ['days' => 7])
+        // days=7 -> today..+7 = 8 days * 3 = 24.
+        $this->generate($admin, $court, ['days' => 7])
             ->assertCreated()
             ->assertJsonPath('data.created_count', 24);
     }
@@ -196,25 +190,31 @@ class ScheduleTest extends TestCase
         $court = Court::factory()->create();
         $monday = Carbon::parse('next monday');
 
-        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", [
-            'schedule' => [
-                ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
-            ],
-        ])->assertOk();
+        $this->setSchedule($admin, $court, [
+            ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
+        ]);
 
-        $this->actingAs($admin, 'sanctum')
-            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [
-                'start_date' => $monday->format('Y-m-d'),
-                'end_date'   => $monday->format('Y-m-d'),
-                'preview'    => true,
-            ])
+        $this->generate($admin, $court, [
+            'start_date' => $monday->format('Y-m-d'),
+            'end_date'   => $monday->format('Y-m-d'),
+            'preview'    => true,
+        ])
             ->assertOk()
             ->assertJsonPath('data.preview', true)
             ->assertJsonPath('data.would_create', 3)
             ->assertJsonPath("data.by_date.{$monday->format('Y-m-d')}", 3);
 
-        // Nothing was persisted.
         $this->assertDatabaseCount('court_slots', 0);
+    }
+
+    public function test_a_consumer_cannot_generate_slots(): void
+    {
+        $consumer = User::factory()->create();
+        $court = Court::factory()->create();
+
+        $this->actingAs($consumer, 'sanctum')
+            ->postJson('/api/admin/slots', ['court_id' => $court->id, 'days' => 7])
+            ->assertStatus(403);
     }
 
     public function test_a_consumer_cannot_manage_the_schedule(): void

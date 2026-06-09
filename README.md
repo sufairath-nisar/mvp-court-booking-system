@@ -118,18 +118,21 @@ Base URL: `http://localhost:8000/api`
 | POST   | `/admin/courts/{id}/image` | Upload court image (multipart, field `image`) |
 
 ### Admin — Slots (`role:admin`)
-| Method | Endpoint             | Description                          |
-|--------|----------------------|--------------------------------------|
-| GET    | `/admin/slots`       | List slots (filter: court_id, date)  |
-| POST   | `/admin/slots`       | Create slot (overlap-protected)      |
-| PUT    | `/admin/slots/{id}`  | Update slot                          |
-| DELETE | `/admin/slots/{id}`  | Delete slot                          |
+| Method | Endpoint             | Description                                            |
+|--------|----------------------|--------------------------------------------------------|
+| GET    | `/admin/slots`       | List slots (filter: court_id, date)                    |
+| POST   | `/admin/slots`       | **Create slots** — generate from the court's schedule  |
+| PUT    | `/admin/slots/{id}`  | Update a single slot                                   |
+| DELETE | `/admin/slots/{id}`  | Delete a single slot                                   |
 
-### Admin — Schedule & slot generation (`role:admin`)
+`POST /admin/slots` does **not** create one slot at a time — it **generates** slots for a
+court from its weekly schedule (+ exceptions). See "Schedule & slot creation" below.
+
+### Admin — Schedule & slot creation (`role:admin`)
 A court has a **weekly schedule** (recurring open/close hours per day-of-week) plus
-**date exceptions** (e.g. Eid/holidays) that override or close specific dates. Concrete
-bookable slots are then **generated** from that template for any date range — so the
-admin defines the hours once instead of creating each slot by hand.
+**date exceptions** (e.g. Eid/holidays) that override or close specific dates. Slots are
+then **created by generating** them from that template — the admin defines the hours
+once instead of adding each slot by hand.
 
 | Method | Endpoint                                          | Description                                   |
 |--------|---------------------------------------------------|-----------------------------------------------|
@@ -138,7 +141,7 @@ admin defines the hours once instead of creating each slot by hand.
 | GET    | `/admin/courts/{court}/schedule-exceptions`       | List date exceptions                          |
 | POST   | `/admin/courts/{court}/schedule-exceptions`       | Add an exception (close or override hours)    |
 | DELETE | `/admin/courts/{court}/schedule-exceptions/{id}`  | Remove an exception                           |
-| POST   | `/admin/courts/{court}/generate-slots`            | Generate slots for a date range               |
+| POST   | `/admin/slots`                                    | **Create (generate) slots** for a court       |
 
 `day_of_week`: 0=Sun … 6=Sat. Generation applies the weekly template, with any exception
 for a date overriding it (a closed date produces no slots). Overlapping slots are skipped.
@@ -160,25 +163,22 @@ POST /api/admin/courts/1/schedule-exceptions
 // ...or a half-day override:
 { "date": "2026-10-13", "open_time": "09:00", "close_time": "12:00", "reason": "Eid half day" }
 
-// 3) Generate concrete slots (template + exceptions applied). start_date/end_date are
-//    OPTIONAL — omit them to default to a rolling horizon (today → +30 days). Pass
+// 3) Create slots = generate from the schedule (court_id in the body).
+//    start_date/end_date are OPTIONAL — omit them for a rolling horizon (today → +30
+//    days, configurable via SLOT_GENERATION_HORIZON_DAYS or a `days` override). Pass
 //    exclude_dates for one-off holidays, or preview:true to see counts WITHOUT saving.
-POST /api/admin/courts/1/generate-slots
-{}                                                  // generate the next 30 days from the schedule
+POST /api/admin/slots
+{ "court_id": 1 }                                              // next 30 days from the schedule
 
-POST /api/admin/courts/1/generate-slots
-{ "exclude_dates": ["2026-10-15"] }                 // next 30 days, skipping one holiday
+POST /api/admin/slots
+{ "court_id": 1, "days": 14, "exclude_dates": ["2026-10-15"] } // next 14 days, skip a holiday
 
-POST /api/admin/courts/1/generate-slots
-{ "days": 14 }                                      // override the horizon for this call
-// default horizon is configurable via SLOT_GENERATION_HORIZON_DAYS (.env)
-
-POST /api/admin/courts/1/generate-slots
-{ "start_date": "2026-10-12", "end_date": "2026-10-18" }
+POST /api/admin/slots
+{ "court_id": 1, "start_date": "2026-10-12", "end_date": "2026-10-18" }
 // -> { "created_count": 52, "skipped_count": 0 }
 
-POST /api/admin/courts/1/generate-slots
-{ "start_date": "2026-10-12", "end_date": "2026-10-18", "preview": true }
+POST /api/admin/slots
+{ "court_id": 1, "start_date": "2026-10-12", "end_date": "2026-10-18", "preview": true }
 // -> { "preview": true, "would_create": 52, "would_skip": 0, "by_date": { "2026-10-13": 12, ... } }
 ```
 
@@ -222,12 +222,14 @@ POST /api/admin/courts/1/generate-slots
 { "name": "Center Court", "location": "Block A", "sport_type": "tennis", "hourly_rate": 25.00, "is_active": true }
 ```
 
-### Create a slot (admin)
+### Create slots (admin) — generated from the schedule
 `POST /api/admin/slots`
 ```json
-{ "court_id": 1, "date": "2026-06-10", "start_time": "08:00", "end_time": "09:00" }
+{ "court_id": 1, "start_date": "2026-06-10", "end_date": "2026-06-16" }
 ```
-Overlapping a court's existing slot → **422** `"This time slot overlaps an existing slot for the court."`
+Generates the court's slots for the range from its weekly schedule (+ exceptions),
+skipping overlaps. Omit the dates for a rolling horizon; add `preview: true` to dry-run.
+See "Schedule & slot creation" above.
 
 ### Book a slot (consumer)
 `POST /api/consumer/bookings`

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Slot\StoreSlotRequest;
 use App\Http\Requests\Slot\UpdateSlotRequest;
 use App\Http\Resources\CourtSlotResource;
+use App\Services\ScheduleService;
 use App\Services\SlotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ class CourtSlotController extends Controller
 {
     public function __construct(
         private readonly SlotService $slotService,
+        private readonly ScheduleService $scheduleService,
     ) {
     }
 
@@ -36,17 +38,35 @@ class CourtSlotController extends Controller
     }
 
     /**
-     * Create a slot for a court (overlap-protected).
+     * Create slots for a court by generating them from its weekly schedule
+     * (+ exceptions) across a date range. Replaces the old one-slot-at-a-time create.
      *
      * POST /api/admin/slots
      */
     public function store(StoreSlotRequest $request): JsonResponse
     {
-        $slot = $this->slotService->create($request->validated());
+        $data = $request->validated();
+
+        $result = $this->scheduleService->generateSlots(
+            (int) $data['court_id'],
+            $data['start_date'] ?? null,
+            $data['end_date'] ?? null,
+            $data['exclude_dates'] ?? [],
+            $data['preview'] ?? false,
+            $data['days'] ?? null,
+        );
+
+        if (! empty($result['preview'])) {
+            return $this->successResponse(
+                $result,
+                "Preview: {$result['would_create']} slot(s) would be generated, {$result['would_skip']} skipped.",
+                200
+            );
+        }
 
         return $this->successResponse(
-            new CourtSlotResource($slot),
-            'Slot created successfully.',
+            $result,
+            "Generated {$result['created_count']} slot(s); skipped {$result['skipped_count']} overlapping.",
             201
         );
     }

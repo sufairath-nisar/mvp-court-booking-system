@@ -35,15 +35,15 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::post('courts/{court}/image', [CourtController::class, 'uploadImage']);
         Route::apiResource('courts', CourtController::class);
 
-        // Weekly schedule (recurring template), date exceptions (Eid/holidays) & slot generation
+        // Weekly schedule (recurring template) & date exceptions (Eid/holidays)
         Route::get('courts/{court}/schedule', [CourtScheduleController::class, 'showSchedule']);
         Route::put('courts/{court}/schedule', [CourtScheduleController::class, 'updateSchedule']);
         Route::get('courts/{court}/schedule-exceptions', [CourtScheduleController::class, 'listExceptions']);
         Route::post('courts/{court}/schedule-exceptions', [CourtScheduleController::class, 'storeException']);
         Route::delete('courts/{court}/schedule-exceptions/{exception}', [CourtScheduleController::class, 'destroyException']);
-        Route::post('courts/{court}/generate-slots', [CourtScheduleController::class, 'generate']);
 
-        // Slot management (no `show` — slots are listed/browsed in bulk)
+        // Slot management. `POST /admin/slots` generates slots from the court's
+        // schedule (replaces the old one-at-a-time create); no `show`.
         Route::apiResource('slots', CourtSlotController::class)->except(['show']);
     });
 

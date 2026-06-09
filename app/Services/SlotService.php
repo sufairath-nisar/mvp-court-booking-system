@@ -39,34 +39,6 @@ class SlotService
     }
 
     /**
-     * Create a slot for a court, guarding against overlaps.
-     *
-     * @param array<string, mixed> $data
-     *
-     * @throws BusinessRuleException
-     */
-    public function create(array $data): CourtSlot
-    {
-        // Validate the court exists.
-        $this->courts->findOrFail($data['court_id']);
-
-        $this->assertNoOverlap(
-            (int) $data['court_id'],
-            $data['date'],
-            $data['start_time'],
-            $data['end_time'],
-        );
-
-        return $this->slots->create([
-            'court_id'   => $data['court_id'],
-            'date'       => $data['date'],
-            'start_time' => $data['start_time'],
-            'end_time'   => $data['end_time'],
-            'is_booked'  => false,
-        ]);
-    }
-
-    /**
      * Update a slot, guarding against overlaps and booked-slot mutation.
      *
      * @param array<string, mixed> $data

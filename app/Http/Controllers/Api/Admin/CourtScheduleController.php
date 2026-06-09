@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Schedule\GenerateSlotsRequest;
 use App\Http\Requests\Schedule\SetCourtScheduleRequest;
 use App\Http\Requests\Schedule\StoreScheduleExceptionRequest;
 use App\Http\Resources\CourtScheduleExceptionResource;
@@ -75,38 +74,5 @@ class CourtScheduleController extends Controller
         $this->scheduleService->deleteException($court, $exception);
 
         return $this->successResponse(null, 'Schedule exception deleted successfully.');
-    }
-
-    /**
-     * POST /api/admin/courts/{court}/generate-slots
-     *
-     * Build concrete slots from the weekly schedule (+ exceptions) for a date range.
-     */
-    public function generate(GenerateSlotsRequest $request, int $court): JsonResponse
-    {
-        $data = $request->validated();
-
-        $result = $this->scheduleService->generateSlots(
-            $court,
-            $data['start_date'] ?? null,
-            $data['end_date'] ?? null,
-            $data['exclude_dates'] ?? [],
-            $data['preview'] ?? false,
-            $data['days'] ?? null,
-        );
-
-        if (! empty($result['preview'])) {
-            return $this->successResponse(
-                $result,
-                "Preview: {$result['would_create']} slot(s) would be generated, {$result['would_skip']} skipped.",
-                200
-            );
-        }
-
-        return $this->successResponse(
-            $result,
-            "Generated {$result['created_count']} slot(s); skipped {$result['skipped_count']} overlapping.",
-            201
-        );
     }
 }
