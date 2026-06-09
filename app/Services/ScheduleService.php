@@ -139,18 +139,21 @@ class ScheduleService
      */
     /**
      * @param string|null $startDate Y-m-d; defaults to today when null.
-     * @param string|null $endDate   Y-m-d; defaults to start + 30 days when null.
+     * @param string|null $endDate   Y-m-d; defaults to start + horizon when null.
      * @param array<int, string> $excludeDates One-off dates (Y-m-d) to skip for this run.
      * @param bool $preview When true, compute counts WITHOUT saving any slots.
+     * @param int|null $days Horizon override (days) used only when $endDate is null.
      *
      * @throws BusinessRuleException
      */
-    public function generateSlots(int $courtId, ?string $startDate = null, ?string $endDate = null, array $excludeDates = [], bool $preview = false): array
+    public function generateSlots(int $courtId, ?string $startDate = null, ?string $endDate = null, array $excludeDates = [], bool $preview = false, ?int $days = null): array
     {
         $this->courts->findOrFail($courtId);
 
+        $horizon = $days ?? (int) config('courtbooking.slot_generation_horizon_days', 30);
+
         $start = $startDate ? Carbon::createFromFormat('Y-m-d', $startDate)->startOfDay() : Carbon::today();
-        $end   = $endDate ? Carbon::createFromFormat('Y-m-d', $endDate)->startOfDay() : $start->copy()->addDays(30);
+        $end   = $endDate ? Carbon::createFromFormat('Y-m-d', $endDate)->startOfDay() : $start->copy()->addDays($horizon);
 
         if ($end->lt($start)) {
             throw new BusinessRuleException('end_date must be on or after start_date.');

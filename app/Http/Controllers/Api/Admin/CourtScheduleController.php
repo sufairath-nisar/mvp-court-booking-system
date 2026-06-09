@@ -92,6 +92,7 @@ class CourtScheduleController extends Controller
             $data['end_date'] ?? null,
             $data['exclude_dates'] ?? [],
             $data['preview'] ?? false,
+            $data['days'] ?? null,
         );
 
         if (! empty($result['preview'])) {

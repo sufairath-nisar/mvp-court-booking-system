@@ -172,6 +172,24 @@ class ScheduleTest extends TestCase
             ->assertJsonPath('data.created_count', 93);
     }
 
+    public function test_generate_horizon_can_be_overridden_with_days(): void
+    {
+        $admin = $this->admin();
+        $court = Court::factory()->create();
+
+        // Every day 09:00-12:00 (3 slots/day). days=7 => today..+7 = 8 days * 3 = 24.
+        $schedule = [];
+        for ($day = 0; $day <= 6; $day++) {
+            $schedule[] = ['day_of_week' => $day, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60];
+        }
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", ['schedule' => $schedule])->assertOk();
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/admin/courts/{$court->id}/generate-slots", ['days' => 7])
+            ->assertCreated()
+            ->assertJsonPath('data.created_count', 24);
+    }
+
     public function test_preview_returns_counts_without_saving_any_slots(): void
     {
         $admin = $this->admin();

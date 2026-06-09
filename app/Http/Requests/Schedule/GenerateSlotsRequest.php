@@ -28,6 +28,7 @@ class GenerateSlotsRequest extends FormRequest
         return [
             'start_date'      => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
             'end_date'        => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'days'            => ['sometimes', 'integer', 'min:1', 'max:90'], // horizon override when end_date omitted
             'exclude_dates'   => ['sometimes', 'array'],
             'exclude_dates.*' => ['date_format:Y-m-d'],
             'preview'         => ['sometimes', 'boolean'], // true => return counts without saving

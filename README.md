@@ -170,6 +170,10 @@ POST /api/admin/courts/1/generate-slots
 { "exclude_dates": ["2026-10-15"] }                 // next 30 days, skipping one holiday
 
 POST /api/admin/courts/1/generate-slots
+{ "days": 14 }                                      // override the horizon for this call
+// default horizon is configurable via SLOT_GENERATION_HORIZON_DAYS (.env)
+
+POST /api/admin/courts/1/generate-slots
 { "start_date": "2026-10-12", "end_date": "2026-10-18" }
 // -> { "created_count": 52, "skipped_count": 0 }
 
