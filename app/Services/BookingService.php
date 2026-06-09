@@ -7,8 +7,10 @@ use App\Events\BookingCancelled;
 use App\Events\BookingCreated;
 use App\Exceptions\BusinessRuleException;
 use App\Models\Booking;
+use App\Models\CourtSlot;
 use App\Models\User;
 use App\Repositories\Contracts\BookingRepositoryInterface;
+use App\Repositories\Contracts\CourtScheduleExceptionRepositoryInterface;
 use App\Repositories\Contracts\CourtSlotRepositoryInterface;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -19,52 +21,56 @@ class BookingService
     public function __construct(
         private readonly BookingRepositoryInterface $bookings,
         private readonly CourtSlotRepositoryInterface $slots,
+        private readonly CourtScheduleExceptionRepositoryInterface $exceptions,
     ) {
     }
 
     /**
-     * Book a slot for the given consumer.
+     * Book a recurring slot for a specific date.
      *
-     * Concurrency-safe: the slot row is locked FOR UPDATE inside a transaction so two
-     * simultaneous requests cannot both pass the availability check. The DB-level unique
-     * index on bookings is the final backstop against double booking.
+     * The slot defines the court + weekday + time; the consumer chooses the date. We
+     * validate the date matches the slot's weekday, isn't in the past, isn't closed/
+     * outside an exception's hours, then prevent double-booking the same (slot, date).
      *
      * @throws BusinessRuleException
      */
-    public function book(User $user, int $slotId): Booking
+    public function book(User $user, int $slotId, string $bookingDate): Booking
     {
-        $booking = DB::transaction(function () use ($user, $slotId) {
-            $slot = $this->slots->findForUpdate($slotId);
+        try {
+            $slot = $this->slots->findOrFail($slotId);
+        } catch (ModelNotFoundException) {
+            throw new BusinessRuleException('The selected slot does not exist.', 404);
+        }
 
-            if (! $slot) {
-                throw new BusinessRuleException('The selected slot does not exist.', 404);
+        $date = Carbon::createFromFormat('Y-m-d', $bookingDate)->startOfDay();
+
+        if ($date->dayOfWeek !== $slot->day_of_week) {
+            throw new BusinessRuleException('This slot is not available on the selected date.');
+        }
+
+        if ($this->slotHasStarted($slot, $bookingDate)) {
+            throw new BusinessRuleException('This slot is in the past and can no longer be booked.');
+        }
+
+        $this->assertDateIsOpen($slot, $bookingDate);
+
+        $booking = DB::transaction(function () use ($user, $slot, $bookingDate) {
+            if ($this->bookings->activeExistsForSlotDate($slot->id, $bookingDate)) {
+                throw new BusinessRuleException('This slot has already been booked for that date.');
             }
 
-            if ($slot->is_booked) {
-                throw new BusinessRuleException('This slot has already been booked.');
-            }
-
-            if ($this->slotHasStarted($slot)) {
-                throw new BusinessRuleException('This slot is in the past and can no longer be booked.');
-            }
-
-            $booking = $this->bookings->create([
+            return $this->bookings->create([
                 'user_id'      => $user->id,
                 'court_id'     => $slot->court_id,
                 'slot_id'      => $slot->id,
-                'booking_date' => $slot->date->format('Y-m-d'),
+                'booking_date' => $bookingDate,
                 'status'       => BookingStatus::BOOKED,
             ]);
-
-            $this->slots->update($slot, ['is_booked' => true]);
-
-            return $booking->load(['court', 'slot']);
         });
 
-        // Notify the consumer (mail) after the booking is durably committed.
-        BookingCreated::dispatch($booking);
+        BookingCreated::dispatch($booking->load(['court', 'slot']));
 
-        return $booking;
+        return $booking->load(['court', 'slot']);
     }
 
     /**
@@ -89,34 +95,55 @@ class BookingService
                 throw new BusinessRuleException('This booking has already been cancelled.');
             }
 
-            $slot = $this->slots->findForUpdate($booking->slot_id);
+            $slot = $booking->slot;
 
-            if ($slot && $this->slotHasStarted($slot)) {
+            if ($slot && $this->slotHasStarted($slot, $booking->booking_date->format('Y-m-d'))) {
                 throw new BusinessRuleException('Bookings can only be cancelled before the slot start time.');
             }
 
             $this->bookings->update($booking, ['status' => BookingStatus::CANCELLED]);
 
-            if ($slot) {
-                $this->slots->update($slot, ['is_booked' => false]);
-            }
-
             return $booking->refresh()->load(['court', 'slot']);
         });
 
-        // Notify the consumer (mail) after the cancellation is durably committed.
         BookingCancelled::dispatch($booking);
 
         return $booking;
     }
 
     /**
-     * Whether the slot's start datetime is now or in the past.
+     * Whether the slot's start datetime (on the given date) is now or in the past.
      */
-    private function slotHasStarted(\App\Models\CourtSlot $slot): bool
+    private function slotHasStarted(CourtSlot $slot, string $date): bool
     {
-        $startsAt = Carbon::parse($slot->date->format('Y-m-d') . ' ' . $slot->start_time);
+        return Carbon::parse($date . ' ' . $slot->start_time)->isPast();
+    }
 
-        return $startsAt->isPast();
+    /**
+     * Reject the booking if a date exception closes the court or the slot falls outside
+     * an override window for that date.
+     *
+     * @throws BusinessRuleException
+     */
+    private function assertDateIsOpen(CourtSlot $slot, string $date): void
+    {
+        $exception = $this->exceptions->findForCourtDate($slot->court_id, $date);
+
+        if (! $exception) {
+            return;
+        }
+
+        if ($exception->is_closed) {
+            throw new BusinessRuleException('The court is closed on the selected date.');
+        }
+
+        if ($exception->open_time && $exception->close_time) {
+            $withinWindow = $slot->start_time >= $exception->open_time
+                && $slot->end_time <= $exception->close_time;
+
+            if (! $withinWindow) {
+                throw new BusinessRuleException('This slot is outside the court\'s opening hours for the selected date.');
+            }
+        }
     }
 }

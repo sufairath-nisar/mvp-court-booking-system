@@ -14,14 +14,16 @@ class CourtSlot extends Model
     /**
      * The attributes that are mass assignable.
      *
+     * A slot is a RECURRING weekly window: (court, day_of_week, start, end). It has no
+     * date — the date a consumer books lives on the booking (`bookings.booking_date`).
+     *
      * @var array<int, string>
      */
     protected $fillable = [
         'court_id',
-        'date',
+        'day_of_week',
         'start_time',
         'end_time',
-        'is_booked',
     ];
 
     /**
@@ -32,8 +34,7 @@ class CourtSlot extends Model
     protected function casts(): array
     {
         return [
-            'date'      => 'date:Y-m-d',
-            'is_booked' => 'boolean',
+            'day_of_week' => 'integer',
         ];
     }
 
@@ -46,18 +47,10 @@ class CourtSlot extends Model
     }
 
     /**
-     * A slot can have many bookings over its lifetime (e.g. booked then cancelled then re-booked).
+     * A slot (recurring window) can have many bookings — one per date it's booked.
      */
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class, 'slot_id');
-    }
-
-    /**
-     * Scope a query to only slots that are not yet booked.
-     */
-    public function scopeAvailable($query)
-    {
-        return $query->where('is_booked', false);
     }
 }

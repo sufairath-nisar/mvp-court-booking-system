@@ -33,6 +33,17 @@ class CourtScheduleExceptionRepository implements CourtScheduleExceptionReposito
     /**
      * {@inheritDoc}
      */
+    public function findForCourtDate(int $courtId, string $date): ?CourtScheduleException
+    {
+        return CourtScheduleException::query()
+            ->where('court_id', $courtId)
+            ->whereDate('date', $date)
+            ->first();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public function upsert(array $data): CourtScheduleException
     {
         return CourtScheduleException::updateOrCreate(

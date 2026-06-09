@@ -120,7 +120,7 @@ Base URL: `http://localhost:8000/api`
 ### Admin — Slots (`role:admin`)
 | Method | Endpoint             | Description                                            |
 |--------|----------------------|--------------------------------------------------------|
-| GET    | `/admin/slots`       | List slots (filter: court_id, date)                    |
+| GET    | `/admin/slots`       | List slots (filter: court_id, day_of_week)             |
 | POST   | `/admin/slots`       | **Create slots** — generate from the court's schedule  |
 | PUT    | `/admin/slots/{id}`  | Update a single slot                                   |
 | DELETE | `/admin/slots/{id}`  | Delete a single slot                                   |
@@ -163,31 +163,23 @@ POST /api/admin/courts/1/schedule-exceptions
 // ...or a half-day override:
 { "date": "2026-10-13", "open_time": "09:00", "close_time": "12:00", "reason": "Eid half day" }
 
-// 3) Create slots = generate from the schedule (court_id in the body).
-//    start_date/end_date are OPTIONAL — omit them for a rolling horizon (today → +30
-//    days, configurable via SLOT_GENERATION_HORIZON_DAYS or a `days` override). Pass
-//    exclude_dates for one-off holidays, or preview:true to see counts WITHOUT saving.
+// 3) Create slots = generate the court's RECURRING slots from its schedule.
+//    No dates — slots recur weekly; the booked date lives on the booking. Idempotent.
 POST /api/admin/slots
-{ "court_id": 1 }                                              // next 30 days from the schedule
-
-POST /api/admin/slots
-{ "court_id": 1, "days": 14, "exclude_dates": ["2026-10-15"] } // next 14 days, skip a holiday
-
-POST /api/admin/slots
-{ "court_id": 1, "start_date": "2026-10-12", "end_date": "2026-10-18" }
-// -> { "created_count": 52, "skipped_count": 0 }
-
-POST /api/admin/slots
-{ "court_id": 1, "start_date": "2026-10-12", "end_date": "2026-10-18", "preview": true }
-// -> { "preview": true, "would_create": 52, "would_skip": 0, "by_date": { "2026-10-13": 12, ... } }
+{ "court_id": 1 }
+// -> { "created_count": 18, "existing_count": 0 }
 ```
+
+Holidays/closures are **not** baked into slots — they're applied at **booking & availability**
+time from the exceptions table (a closed date has no availability and can't be booked; an
+hour-override narrows that date's availability).
 
 ### Consumer — Booking (`role:consumer`)
 | Method | Endpoint                                   | Description                          |
 |--------|--------------------------------------------|--------------------------------------|
 | GET    | `/consumer/courts`                         | View available (active) courts       |
-| GET    | `/consumer/courts/{court}/available-slots` | View available slots for a court     |
-| POST   | `/consumer/bookings`                       | Book a slot                          |
+| GET    | `/consumer/courts/{court}/available-slots?date=YYYY-MM-DD` | Available slots for a court on a date |
+| POST   | `/consumer/bookings`                       | Book a slot (`slot_id` + `booking_date`) |
 | PATCH  | `/consumer/bookings/{id}/cancel`           | Cancel (before slot start only)      |
 
 ---
@@ -222,20 +214,20 @@ POST /api/admin/slots
 { "name": "Center Court", "location": "Block A", "sport_type": "tennis", "hourly_rate": 25.00, "is_active": true }
 ```
 
-### Create slots (admin) — generated from the schedule
+### Create slots (admin) — generate recurring from the schedule
 `POST /api/admin/slots`
 ```json
-{ "court_id": 1, "start_date": "2026-06-10", "end_date": "2026-06-16" }
+{ "court_id": 1 }
 ```
-Generates the court's slots for the range from its weekly schedule (+ exceptions),
-skipping overlaps. Omit the dates for a rolling horizon; add `preview: true` to dry-run.
+Generates the court's **recurring** weekly slots from its schedule (idempotent). No dates.
 See "Schedule & slot creation" above.
 
 ### Book a slot (consumer)
 `POST /api/consumer/bookings`
 ```json
-{ "slot_id": 5 }
+{ "slot_id": 5, "booking_date": "2026-10-12" }
 ```
+The slot is a recurring window (e.g. Monday 9–10am); the consumer picks the **date**.
 **201**
 ```json
 {
@@ -243,11 +235,11 @@ See "Schedule & slot creation" above.
   "message": "Booking confirmed successfully.",
   "data": {
     "id": 1, "user_id": 2, "court_id": 1, "slot_id": 5,
-    "booking_date": "2026-06-10", "status": "booked"
+    "booking_date": "2026-10-12", "status": "booked"
   }
 }
 ```
-Already booked → **422** `"This slot has already been booked."`
+Same slot + date already booked → **422** `"This slot has already been booked for that date."`
 
 ### Cancel a booking
 `PATCH /api/consumer/bookings/1/cancel` → frees the slot.
@@ -259,8 +251,8 @@ After slot start → **422** `"Bookings can only be cancelled before the slot st
 
 - **Admins only via seeder** — no admin registration endpoint.
 - **Slot overlap prevention** — interval check in `SlotService` (`start < existing.end AND end > existing.start`).
-- **No double booking** — `DB::transaction` + `lockForUpdate` on the slot row, then check/set `is_booked` atomically.
-- **Cancel window** — only before the slot's start datetime; cancelling re-opens the slot.
+- **No double booking** — `DB::transaction` + `lockForUpdate` on existing bookings for the same `(slot_id, booking_date)`; a second booking for that slot+date is rejected.
+- **Cancel window** — only before the slot's start datetime on its booked date; cancelling frees that slot for that date (it becomes available again).
 - **Role isolation** — `role:admin` / `role:consumer` middleware on every protected route.
 
 ---

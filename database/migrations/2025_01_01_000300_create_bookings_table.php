@@ -14,8 +14,9 @@ return new class extends Migration
      * id, user_id, court_id, slot_id, booking_date, status ('booked'|'cancelled'),
      * created_at, updated_at.
      *
-     * Double booking is prevented in BookingService via a transaction that locks the
-     * slot row (lockForUpdate) before checking/setting is_booked.
+     * A slot is a recurring weekly window, so the booked DATE lives here. Double
+     * booking is prevented in BookingService via a transaction that locks existing
+     * bookings for the same (slot_id, booking_date) before inserting.
      */
     public function up(): void
     {
@@ -29,6 +30,8 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['user_id', 'status']);
+            // Fast lookup for the per-date double-booking guard.
+            $table->index(['slot_id', 'booking_date']);
         });
     }
 

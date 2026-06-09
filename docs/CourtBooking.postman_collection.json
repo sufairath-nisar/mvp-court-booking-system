@@ -220,7 +220,7 @@
           }
         },
         {
-          "name": "Create slots (generate from schedule)",
+          "name": "Create slots (generate recurring from schedule)",
           "request": {
             "method": "POST",
             "header": [
@@ -229,39 +229,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"court_id\": 1,\n  \"start_date\": \"2026-10-12\",\n  \"end_date\": \"2026-10-18\",\n  \"exclude_dates\": [\"2026-10-15\"]\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{base_url}}/admin/slots", "host": ["{{base_url}}"], "path": ["admin", "slots"] }
-          }
-        },
-        {
-          "name": "Create slots - rolling horizon (no dates)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"court_id\": 1,\n  \"days\": 14\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{base_url}}/admin/slots", "host": ["{{base_url}}"], "path": ["admin", "slots"] }
-          }
-        },
-        {
-          "name": "Preview slot creation (no save)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"court_id\": 1,\n  \"start_date\": \"2026-10-12\",\n  \"end_date\": \"2026-10-18\",\n  \"preview\": true\n}",
+              "raw": "{\n  \"court_id\": 1\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/admin/slots", "host": ["{{base_url}}"], "path": ["admin", "slots"] }
@@ -389,9 +357,10 @@
               { "key": "Authorization", "value": "Bearer {{token}}" }
             ],
             "url": {
-              "raw": "{{base_url}}/consumer/courts/1/available-slots",
+              "raw": "{{base_url}}/consumer/courts/1/available-slots?date=2026-10-12",
               "host": ["{{base_url}}"],
-              "path": ["consumer", "courts", "1", "available-slots"]
+              "path": ["consumer", "courts", "1", "available-slots"],
+              "query": [{ "key": "date", "value": "2026-10-12" }]
             }
           }
         },
@@ -405,7 +374,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"slot_id\": 5\n}",
+              "raw": "{\n  \"slot_id\": 5,\n  \"booking_date\": \"2026-10-12\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/consumer/bookings", "host": ["{{base_url}}"], "path": ["consumer", "bookings"] }

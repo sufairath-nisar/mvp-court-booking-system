@@ -12,6 +12,12 @@ interface BookingRepositoryInterface
     public function findOrFail(int $id): Booking;
 
     /**
+     * Whether an active (booked) booking already exists for this slot on this date.
+     * Locks the matching rows FOR UPDATE — must be called inside a transaction.
+     */
+    public function activeExistsForSlotDate(int $slotId, string $date): bool;
+
+    /**
      * Create a new booking.
      *
      * @param array<string, mixed> $data

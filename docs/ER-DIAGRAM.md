@@ -35,13 +35,19 @@
                                      ├─────────────────────────┤
                                      │ id (PK)                 │
                                      │ court_id (FK → courts)  │
-                                     │ date                    │
+                                     │ day_of_week  (0–6)      │  ← RECURRING (no date)
                                      │ start_time              │
                                      │ end_time                │
-                                     │ is_booked               │
                                      │ timestamps              │
                                      └─────────────────────────┘
 ```
+
+A slot is a **recurring weekly window** (no date / no is_booked). Two supporting tables
+drive it: **`court_schedules`** (court_id, day_of_week, open_time, close_time,
+slot_duration — the weekly template that generates the slots) and
+**`court_schedule_exceptions`** (court_id, date, is_closed, open_time, close_time —
+holiday closures / hour overrides applied at availability & booking time). The booked
+**date** lives on `bookings.booking_date`.
 
 ## Relationship summary
 
@@ -56,14 +62,14 @@
 ## Key constraints
 
 - `users.email` — **UNIQUE**.
-- Slot overlap is prevented in `SlotService` (interval check per court/date).
-- Double booking is prevented in `BookingService` via a transaction that locks the slot
-  row (`lockForUpdate`) before checking/setting `is_booked`.
+- `court_slots (court_id, day_of_week, start_time)` — **UNIQUE** (one recurring window per slot).
+- Double booking is prevented in `BookingService` via a transaction that locks existing
+  bookings for the same `(slot_id, booking_date)` before inserting.
 - All FKs `ON DELETE CASCADE`.
 
 ## Indexes (performance)
 
 - `users.role`
 - `courts.sport_type`, `courts.is_active`
-- `court_slots (court_id, date)`, `court_slots.is_booked`
-- `bookings (user_id, status)`, `bookings.status`
+- `court_slots (court_id, day_of_week, start_time)` (unique)
+- `bookings (user_id, status)`, `bookings (slot_id, booking_date)`, `bookings.status`

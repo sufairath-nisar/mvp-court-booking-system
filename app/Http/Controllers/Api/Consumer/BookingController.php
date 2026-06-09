@@ -26,6 +26,7 @@ class BookingController extends Controller
         $booking = $this->bookingService->book(
             $request->user(),
             (int) $request->validated('slot_id'),
+            $request->validated('booking_date'),
         );
 
         return $this->successResponse(

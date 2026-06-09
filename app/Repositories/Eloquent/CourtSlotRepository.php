@@ -2,6 +2,7 @@
 
 namespace App\Repositories\Eloquent;
 
+use App\Enums\BookingStatus;
 use App\Models\CourtSlot;
 use App\Repositories\Contracts\CourtSlotRepositoryInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -17,9 +18,8 @@ class CourtSlotRepository implements CourtSlotRepositoryInterface
         return CourtSlot::query()
             ->with('court')
             ->when(isset($filters['court_id']), fn ($q) => $q->where('court_id', $filters['court_id']))
-            ->when(isset($filters['date']), fn ($q) => $q->whereDate('date', $filters['date']))
-            ->when(isset($filters['is_booked']), fn ($q) => $q->where('is_booked', filter_var($filters['is_booked'], FILTER_VALIDATE_BOOLEAN)))
-            ->orderBy('date')
+            ->when(isset($filters['day_of_week']), fn ($q) => $q->where('day_of_week', $filters['day_of_week']))
+            ->orderBy('day_of_week')
             ->orderBy('start_time')
             ->paginate($perPage);
     }
@@ -27,14 +27,16 @@ class CourtSlotRepository implements CourtSlotRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function availableForCourt(int $courtId, ?string $date = null): Collection
+    public function availableForCourtOnDate(int $courtId, int $dayOfWeek, string $date): Collection
     {
         return CourtSlot::query()
             ->where('court_id', $courtId)
-            ->available()
-            ->when($date, fn ($q) => $q->whereDate('date', $date))
-            ->whereRaw("TIMESTAMP(date, start_time) > NOW()")
-            ->orderBy('date')
+            ->where('day_of_week', $dayOfWeek)
+            // Exclude slots that already have an active booking on this date.
+            ->whereDoesntHave('bookings', function ($q) use ($date) {
+                $q->where('booking_date', $date)
+                    ->where('status', BookingStatus::BOOKED->value);
+            })
             ->orderBy('start_time')
             ->get();
     }
@@ -50,24 +52,26 @@ class CourtSlotRepository implements CourtSlotRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function findForUpdate(int $id): ?CourtSlot
+    public function hasOverlap(int $courtId, int $dayOfWeek, string $startTime, string $endTime, ?int $ignoreSlotId = null): bool
     {
-        return CourtSlot::whereKey($id)->lockForUpdate()->first();
+        return CourtSlot::query()
+            ->where('court_id', $courtId)
+            ->where('day_of_week', $dayOfWeek)
+            ->when($ignoreSlotId, fn ($q) => $q->whereKeyNot($ignoreSlotId))
+            ->where('start_time', '<', $endTime)
+            ->where('end_time', '>', $startTime)
+            ->exists();
     }
 
     /**
      * {@inheritDoc}
      */
-    public function hasOverlap(int $courtId, string $date, string $startTime, string $endTime, ?int $ignoreSlotId = null): bool
+    public function upsertRecurring(int $courtId, int $dayOfWeek, string $startTime, string $endTime): CourtSlot
     {
-        return CourtSlot::query()
-            ->where('court_id', $courtId)
-            ->whereDate('date', $date)
-            ->when($ignoreSlotId, fn ($q) => $q->whereKeyNot($ignoreSlotId))
-            // Two intervals overlap when existing.start < new.end AND existing.end > new.start.
-            ->where('start_time', '<', $endTime)
-            ->where('end_time', '>', $startTime)
-            ->exists();
+        return CourtSlot::updateOrCreate(
+            ['court_id' => $courtId, 'day_of_week' => $dayOfWeek, 'start_time' => $startTime],
+            ['end_time' => $endTime],
+        );
     }
 
     /**

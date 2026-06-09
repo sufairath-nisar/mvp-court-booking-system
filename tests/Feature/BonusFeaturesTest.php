@@ -8,6 +8,7 @@ use App\Models\CourtSlot;
 use App\Models\User;
 use App\Notifications\BookingCancelledNotification;
 use App\Notifications\BookingConfirmedNotification;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
@@ -25,10 +26,11 @@ class BonusFeaturesTest extends TestCase
         Notification::fake();
 
         $consumer = User::factory()->create();
-        $slot = CourtSlot::factory()->create();
+        $date = Carbon::tomorrow();
+        $slot = CourtSlot::factory()->create(['day_of_week' => $date->dayOfWeek, 'start_time' => '09:00:00', 'end_time' => '10:00:00']);
 
         $this->actingAs($consumer, 'sanctum')
-            ->postJson('/api/consumer/bookings', ['slot_id' => $slot->id])
+            ->postJson('/api/consumer/bookings', ['slot_id' => $slot->id, 'booking_date' => $date->format('Y-m-d')])
             ->assertCreated();
 
         Notification::assertSentTo($consumer, BookingConfirmedNotification::class);
@@ -39,10 +41,11 @@ class BonusFeaturesTest extends TestCase
         Notification::fake();
 
         $consumer = User::factory()->create();
-        $slot = CourtSlot::factory()->create();
+        $date = Carbon::tomorrow();
+        $slot = CourtSlot::factory()->create(['day_of_week' => $date->dayOfWeek, 'start_time' => '09:00:00', 'end_time' => '10:00:00']);
 
         $bookingId = $this->actingAs($consumer, 'sanctum')
-            ->postJson('/api/consumer/bookings', ['slot_id' => $slot->id])
+            ->postJson('/api/consumer/bookings', ['slot_id' => $slot->id, 'booking_date' => $date->format('Y-m-d')])
             ->json('data.id');
 
         $this->actingAs($consumer, 'sanctum')

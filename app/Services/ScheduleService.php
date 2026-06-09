@@ -138,168 +138,51 @@ class ScheduleService
      * @throws BusinessRuleException
      */
     /**
-     * @param string|null $startDate Y-m-d; defaults to today when null.
-     * @param string|null $endDate   Y-m-d; defaults to start + horizon when null.
-     * @param array<int, string> $excludeDates One-off dates (Y-m-d) to skip for this run.
-     * @param bool $preview When true, compute counts WITHOUT saving any slots.
-     * @param int|null $days Horizon override (days) used only when $endDate is null.
+     * Create the court's RECURRING slots by expanding its weekly schedule.
+     *
+     * Each active schedule row (day_of_week, open–close, duration) is sliced into
+     * fixed-length recurring windows — e.g. Mon 09:00–12:00 ⇒ 3 slots that apply to
+     * EVERY Monday. No dates are involved; the booked date lives on the booking.
+     * Idempotent: re-running upserts (won't duplicate or disturb booked slots).
+     *
+     * @return array{created_count: int, existing_count: int}
      *
      * @throws BusinessRuleException
      */
-    public function generateSlots(int $courtId, ?string $startDate = null, ?string $endDate = null, array $excludeDates = [], bool $preview = false, ?int $days = null): array
+    public function generateRecurringSlots(int $courtId): array
     {
         $this->courts->findOrFail($courtId);
 
-        $horizon = $days ?? (int) config('courtbooking.slot_generation_horizon_days', 30);
+        $schedules = $this->schedules->forCourt($courtId)->where('is_active', true);
 
-        $start = $startDate ? Carbon::createFromFormat('Y-m-d', $startDate)->startOfDay() : Carbon::today();
-        $end   = $endDate ? Carbon::createFromFormat('Y-m-d', $endDate)->startOfDay() : $start->copy()->addDays($horizon);
-
-        if ($end->lt($start)) {
-            throw new BusinessRuleException('end_date must be on or after start_date.');
-        }
-        if ($start->diffInDays($end) > 90) {
-            throw new BusinessRuleException('The date range may not exceed 90 days.');
+        if ($schedules->isEmpty()) {
+            throw new BusinessRuleException('Set the weekly schedule before generating slots.');
         }
 
-        $templates  = $this->schedules->forCourt($courtId)->keyBy('day_of_week');
-        $exceptions = $this->exceptions->forCourtBetween($courtId, $start->format('Y-m-d'), $end->format('Y-m-d'))
-            ->keyBy(fn (CourtScheduleException $e) => $e->date->format('Y-m-d'));
-        $excluded = array_flip($excludeDates);
-
-        // Preview reads only (no writes); a real run persists inside a transaction.
-        if ($preview) {
-            return $this->runGeneration($courtId, $start, $end, $templates, $exceptions, $excluded, false);
-        }
-
-        return DB::transaction(fn () => $this->runGeneration($courtId, $start, $end, $templates, $exceptions, $excluded, true));
-    }
-
-    /**
-     * Walk the date range applying the schedule + exceptions; either persist slots
-     * or (preview) just tally what would be produced.
-     *
-     * @param  \Illuminate\Support\Collection<int, \App\Models\CourtSchedule>  $templates
-     * @param  \Illuminate\Support\Collection<string, CourtScheduleException>  $exceptions
-     * @param  array<string, int>                                             $excluded
-     * @return array<string, mixed>
-     */
-    private function runGeneration(int $courtId, Carbon $start, Carbon $end, $templates, $exceptions, array $excluded, bool $persist): array
-    {
         $created = 0;
-        $skipped = 0;
-        $byDate = [];
+        $existing = 0;
 
-        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
-            $dateStr = $date->format('Y-m-d');
+        DB::transaction(function () use ($schedules, $courtId, &$created, &$existing) {
+            foreach ($schedules as $schedule) {
+                $duration = $schedule->slot_duration;
+                $cursor   = Carbon::parse((string) $schedule->open_time);
+                $dayEnd   = Carbon::parse((string) $schedule->close_time);
 
-            if (isset($excluded[$dateStr])) {
-                continue; // explicitly excluded for this run
-            }
+                while ($cursor->copy()->addMinutes($duration)->lte($dayEnd)) {
+                    $slot = $this->slots->upsertRecurring(
+                        $courtId,
+                        $schedule->day_of_week,
+                        $cursor->format('H:i:s'),
+                        $cursor->copy()->addMinutes($duration)->format('H:i:s'),
+                    );
 
-            $window = $this->resolveWindow($date, $templates, $exceptions);
+                    $slot->wasRecentlyCreated ? $created++ : $existing++;
 
-            if ($window === null) {
-                continue; // closed that day (no template, inactive, or an explicit closure)
-            }
-
-            $made = $this->sliceDay($courtId, $dateStr, $window['open'], $window['close'], $window['duration'], $persist, $created, $skipped);
-
-            if ($made > 0) {
-                $byDate[$dateStr] = $made;
-            }
-        }
-
-        if (! $persist) {
-            return [
-                'preview'      => true,
-                'would_create' => $created,
-                'would_skip'   => $skipped,
-                'by_date'      => $byDate,
-            ];
-        }
-
-        return ['created_count' => $created, 'skipped_count' => $skipped];
-    }
-
-    /**
-     * Resolve the effective open/close/duration for one date: an exception (if any)
-     * overrides the weekly template; returns null when the court is closed that day.
-     *
-     * @param  \Illuminate\Support\Collection<int, \App\Models\CourtSchedule>          $templates
-     * @param  \Illuminate\Support\Collection<string, CourtScheduleException>          $exceptions
-     * @return array{open: string, close: string, duration: int}|null
-     */
-    private function resolveWindow(Carbon $date, $templates, $exceptions): ?array
-    {
-        $template = $templates->get($date->dayOfWeek);
-        $exception = $exceptions->get($date->format('Y-m-d'));
-
-        if ($exception) {
-            if ($exception->is_closed) {
-                return null;
-            }
-
-            $open  = $exception->open_time ?? $template?->open_time;
-            $close = $exception->close_time ?? $template?->close_time;
-
-            if (! $open || ! $close) {
-                return null;
-            }
-
-            return [
-                'open'     => $open,
-                'close'    => $close,
-                'duration' => (int) ($exception->slot_duration ?? $template?->slot_duration ?? 60),
-            ];
-        }
-
-        if (! $template || ! $template->is_active) {
-            return null;
-        }
-
-        return [
-            'open'     => $template->open_time,
-            'close'    => $template->close_time,
-            'duration' => $template->slot_duration,
-        ];
-    }
-
-    /**
-     * Slice one date's [open, close] window into fixed-length slots.
-     *
-     * When $persist is true the slots are created; otherwise (preview) nothing is
-     * written. Returns how many slots were (or would be) created for this date.
-     */
-    private function sliceDay(int $courtId, string $date, string $open, string $close, int $duration, bool $persist, int &$created, int &$skipped): int
-    {
-        $cursor = Carbon::parse("{$date} {$open}");
-        $dayEnd = Carbon::parse("{$date} {$close}");
-        $made = 0;
-
-        while ($cursor->copy()->addMinutes($duration)->lte($dayEnd)) {
-            $startStr = $cursor->format('H:i:s');
-            $endStr   = $cursor->copy()->addMinutes($duration)->format('H:i:s');
-
-            if ($this->slots->hasOverlap($courtId, $date, $startStr, $endStr)) {
-                $skipped++;
-            } else {
-                if ($persist) {
-                    $this->slots->create([
-                        'court_id'   => $courtId,
-                        'date'       => $date,
-                        'start_time' => $startStr,
-                        'end_time'   => $endStr,
-                        'is_booked'  => false,
-                    ]);
+                    $cursor->addMinutes($duration);
                 }
-                $created++;
-                $made++;
             }
+        });
 
-            $cursor->addMinutes($duration);
-        }
-
-        return $made;
+        return ['created_count' => $created, 'existing_count' => $existing];
     }
 }

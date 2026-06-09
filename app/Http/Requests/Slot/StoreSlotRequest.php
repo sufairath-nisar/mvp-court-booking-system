@@ -15,25 +15,15 @@ class StoreSlotRequest extends FormRequest
     }
 
     /**
-     * Create slots for a court by generating them from its weekly schedule
-     * (+ date exceptions) across a date range.
-     *
-     * `start_date`/`end_date` are optional — omit them to use a rolling horizon
-     * (today → +`days`, or the configured default). Pass `exclude_dates` for one-off
-     * holidays, or `preview: true` to get the counts without saving.
+     * Create slots for a court = generate its recurring weekly slots from the schedule.
+     * No dates are needed — slots recur every week; the booked date lives on the booking.
      *
      * @return array<string, mixed>
      */
     public function rules(): array
     {
         return [
-            'court_id'        => ['required', 'integer', 'exists:courts,id'],
-            'start_date'      => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
-            'end_date'        => ['sometimes', 'nullable', 'date_format:Y-m-d'],
-            'days'            => ['sometimes', 'integer', 'min:1', 'max:90'],
-            'exclude_dates'   => ['sometimes', 'array'],
-            'exclude_dates.*' => ['date_format:Y-m-d'],
-            'preview'         => ['sometimes', 'boolean'],
+            'court_id' => ['required', 'integer', 'exists:courts,id'],
         ];
     }
 }

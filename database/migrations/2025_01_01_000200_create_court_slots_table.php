@@ -14,15 +14,14 @@ return new class extends Migration
         Schema::create('court_slots', function (Blueprint $table) {
             $table->id();
             $table->foreignId('court_id')->constrained('courts')->cascadeOnDelete();
-            $table->date('date');
+            $table->unsignedTinyInteger('day_of_week'); // 0 = Sunday ... 6 = Saturday
             $table->time('start_time');
             $table->time('end_time');
-            $table->boolean('is_booked')->default(false)->index();
             $table->timestamps();
 
-            // Speeds up availability look-ups and overlap checks per court/date.
-            // (Overlap prevention itself is enforced in SlotService.)
-            $table->index(['court_id', 'date']);
+            // A slot is a RECURRING weekly window (no date). The actual date a consumer
+            // books lives on `bookings.booking_date`; availability is computed per date.
+            $table->unique(['court_id', 'day_of_week', 'start_time']);
         });
     }
 

@@ -38,35 +38,20 @@ class CourtSlotController extends Controller
     }
 
     /**
-     * Create slots for a court by generating them from its weekly schedule
-     * (+ exceptions) across a date range. Replaces the old one-slot-at-a-time create.
+     * Create slots for a court = generate its recurring weekly slots from the schedule.
+     * Replaces the old one-slot-at-a-time create.
      *
-     * POST /api/admin/slots
+     * POST /api/admin/slots  { "court_id": 1 }
      */
     public function store(StoreSlotRequest $request): JsonResponse
     {
-        $data = $request->validated();
-
-        $result = $this->scheduleService->generateSlots(
-            (int) $data['court_id'],
-            $data['start_date'] ?? null,
-            $data['end_date'] ?? null,
-            $data['exclude_dates'] ?? [],
-            $data['preview'] ?? false,
-            $data['days'] ?? null,
+        $result = $this->scheduleService->generateRecurringSlots(
+            (int) $request->validated()['court_id'],
         );
-
-        if (! empty($result['preview'])) {
-            return $this->successResponse(
-                $result,
-                "Preview: {$result['would_create']} slot(s) would be generated, {$result['would_skip']} skipped.",
-                200
-            );
-        }
 
         return $this->successResponse(
             $result,
-            "Generated {$result['created_count']} slot(s); skipped {$result['skipped_count']} overlapping.",
+            "Created {$result['created_count']} recurring slot(s) ({$result['existing_count']} already existed).",
             201
         );
     }

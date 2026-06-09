@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Models\Court;
-use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -12,7 +11,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 class CourtSlotFactory extends Factory
 {
     /**
-     * Define the model's default state.
+     * A recurring weekly slot: a court, a day-of-week, and a one-hour window.
      *
      * @return array<string, mixed>
      */
@@ -21,11 +20,10 @@ class CourtSlotFactory extends Factory
         $hour = fake()->numberBetween(8, 20);
 
         return [
-            'court_id'   => Court::factory(),
-            'date'       => Carbon::tomorrow()->format('Y-m-d'),
-            'start_time' => sprintf('%02d:00:00', $hour),
-            'end_time'   => sprintf('%02d:00:00', $hour + 1),
-            'is_booked'  => false,
+            'court_id'    => Court::factory(),
+            'day_of_week' => fake()->numberBetween(0, 6),
+            'start_time'  => sprintf('%02d:00:00', $hour),
+            'end_time'    => sprintf('%02d:00:00', $hour + 1),
         ];
     }
 }

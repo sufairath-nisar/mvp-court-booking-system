@@ -18,6 +18,11 @@ interface CourtScheduleExceptionRepositoryInterface
     public function forCourtBetween(int $courtId, string $startDate, string $endDate): Collection;
 
     /**
+     * The exception (if any) for a specific court + date.
+     */
+    public function findForCourtDate(int $courtId, string $date): ?CourtScheduleException;
+
+    /**
      * Create (or update) an exception for a court/date.
      *
      * @param array<string, mixed> $data
