@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\CourtController;
+use App\Http\Controllers\Api\Admin\CourtScheduleController;
 use App\Http\Controllers\Api\Admin\CourtSlotController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Consumer\BookingController;
@@ -34,8 +35,15 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::post('courts/{court}/image', [CourtController::class, 'uploadImage']);
         Route::apiResource('courts', CourtController::class);
 
+        // Weekly schedule (recurring template), date exceptions (Eid/holidays) & slot generation
+        Route::get('courts/{court}/schedule', [CourtScheduleController::class, 'showSchedule']);
+        Route::put('courts/{court}/schedule', [CourtScheduleController::class, 'updateSchedule']);
+        Route::get('courts/{court}/schedule-exceptions', [CourtScheduleController::class, 'listExceptions']);
+        Route::post('courts/{court}/schedule-exceptions', [CourtScheduleController::class, 'storeException']);
+        Route::delete('courts/{court}/schedule-exceptions/{exception}', [CourtScheduleController::class, 'destroyException']);
+        Route::post('courts/{court}/generate-slots', [CourtScheduleController::class, 'generate']);
+
         // Slot management (no `show` — slots are listed/browsed in bulk)
-        Route::post('slots/bulk', [CourtSlotController::class, 'bulkStore']);
         Route::apiResource('slots', CourtSlotController::class)->except(['show']);
     });
 

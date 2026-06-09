@@ -122,30 +122,49 @@ Base URL: `http://localhost:8000/api`
 |--------|----------------------|--------------------------------------|
 | GET    | `/admin/slots`       | List slots (filter: court_id, date)  |
 | POST   | `/admin/slots`       | Create slot (overlap-protected)      |
-| POST   | `/admin/slots/bulk`  | Bulk-generate slots for a date range (see below) |
 | PUT    | `/admin/slots/{id}`  | Update slot                          |
 | DELETE | `/admin/slots/{id}`  | Delete slot                          |
 
-**Bulk slot generation** — the admin selects specific dates (from a calendar on the
-front end), each with its own start/end time, and the API creates all the 1-hour slots
-in a single request — instead of creating each slot by hand. Some dates can share the
-same window, others can differ. Existing/overlapping slots are skipped (not errored);
-the response returns `created_count` and `skipped_count`.
+### Admin — Schedule & slot generation (`role:admin`)
+A court has a **weekly schedule** (recurring open/close hours per day-of-week) plus
+**date exceptions** (e.g. Eid/holidays) that override or close specific dates. Concrete
+bookable slots are then **generated** from that template for any date range — so the
+admin defines the hours once instead of creating each slot by hand.
+
+| Method | Endpoint                                          | Description                                   |
+|--------|---------------------------------------------------|-----------------------------------------------|
+| GET    | `/admin/courts/{court}/schedule`                  | View the weekly schedule                      |
+| PUT    | `/admin/courts/{court}/schedule`                  | Set the weekly schedule (one row per weekday) |
+| GET    | `/admin/courts/{court}/schedule-exceptions`       | List date exceptions                          |
+| POST   | `/admin/courts/{court}/schedule-exceptions`       | Add an exception (close or override hours)    |
+| DELETE | `/admin/courts/{court}/schedule-exceptions/{id}`  | Remove an exception                           |
+| POST   | `/admin/courts/{court}/generate-slots`            | Generate slots for a date range               |
+
+`day_of_week`: 0=Sun … 6=Sat. Generation applies the weekly template, with any exception
+for a date overriding it (a closed date produces no slots). Overlapping slots are skipped.
 
 ```json
-POST /api/admin/slots/bulk
+// 1) Set the weekly schedule (Mon–Fri 09:00–21:00, Sat 08:00–12:00)
+PUT /api/admin/courts/1/schedule
 {
-  "court_id": 1,
-  "slot_duration": 60,
-  "dates": [
-    { "date": "2026-07-10", "start_time": "09:00", "end_time": "21:00" },
-    { "date": "2026-07-12", "start_time": "08:00", "end_time": "12:00" },
-    { "date": "2026-07-15", "start_time": "09:00", "end_time": "21:00" }
+  "schedule": [
+    { "day_of_week": 1, "open_time": "09:00", "close_time": "21:00", "slot_duration": 60 },
+    { "day_of_week": 2, "open_time": "09:00", "close_time": "21:00", "slot_duration": 60 },
+    { "day_of_week": 6, "open_time": "08:00", "close_time": "12:00", "slot_duration": 60 }
   ]
 }
+
+// 2) Eid closure (or override hours for a date)
+POST /api/admin/courts/1/schedule-exceptions
+{ "date": "2026-10-12", "is_closed": true, "reason": "Eid" }
+// ...or a half-day override:
+{ "date": "2026-10-13", "open_time": "09:00", "close_time": "12:00", "reason": "Eid half day" }
+
+// 3) Generate concrete slots for a date range (template + exceptions applied)
+POST /api/admin/courts/1/generate-slots
+{ "start_date": "2026-10-12", "end_date": "2026-10-18" }
+// -> { "created_count": 52, "skipped_count": 0 }
 ```
-Each entry's window is sliced into `slot_duration`-minute blocks (default 60 = 1 hour);
-a date may override `slot_duration`. Up to 120 dates per request.
 
 ### Consumer — Booking (`role:consumer`)
 | Method | Endpoint                                   | Description                          |

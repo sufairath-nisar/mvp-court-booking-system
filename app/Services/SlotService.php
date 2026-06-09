@@ -6,10 +6,8 @@ use App\Exceptions\BusinessRuleException;
 use App\Models\CourtSlot;
 use App\Repositories\Contracts\CourtRepositoryInterface;
 use App\Repositories\Contracts\CourtSlotRepositoryInterface;
-use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
 
 class SlotService
 {
@@ -38,82 +36,6 @@ class SlotService
         $this->courts->findOrFail($courtId);
 
         return $this->slots->availableForCourt($courtId, $date);
-    }
-
-    /**
-     * Bulk-generate slots for a list of admin-selected dates.
-     *
-     * The admin picks specific dates (from a calendar on the front end), each with its
-     * own start/end time — some dates may share the same window, others differ. This
-     * slices each date's window into `slot_duration`-minute blocks (default 60 = 1 hour)
-     * and creates the slots in one call. A slot that would overlap an existing one is
-     * skipped, not errored.
-     *
-     * Expected shape:
-     *   court_id, slot_duration?, dates: [{ date, start_time, end_time, slot_duration? }]
-     *
-     * @param array<string, mixed> $data
-     * @return array{created: array<int, CourtSlot>, created_count: int, skipped_count: int}
-     *
-     * @throws BusinessRuleException
-     */
-    public function generateBulk(array $data): array
-    {
-        $courtId = (int) $data['court_id'];
-        $this->courts->findOrFail($courtId);
-
-        $defaultDuration = (int) ($data['slot_duration'] ?? 60);
-
-        $created = [];
-        $skipped = 0;
-
-        DB::transaction(function () use ($data, $courtId, $defaultDuration, &$created, &$skipped) {
-            foreach ($data['dates'] as $entry) {
-                if ($entry['start_time'] >= $entry['end_time']) {
-                    throw new BusinessRuleException("start_time must be before end_time for {$entry['date']}.");
-                }
-
-                $duration = (int) ($entry['slot_duration'] ?? $defaultDuration);
-
-                $this->generateDaySlots($courtId, $entry['date'], $entry['start_time'], $entry['end_time'], $duration, $created, $skipped);
-            }
-        });
-
-        return [
-            'created'       => $created,
-            'created_count' => count($created),
-            'skipped_count' => $skipped,
-        ];
-    }
-
-    /**
-     * Slice one date's [start, end] window into fixed-length slots and create them.
-     *
-     * @param array<int, CourtSlot> $created
-     */
-    private function generateDaySlots(int $courtId, string $date, string $start, string $end, int $duration, array &$created, int &$skipped): void
-    {
-        $dayStart = Carbon::createFromFormat('Y-m-d H:i', $date . ' ' . $start);
-        $dayEnd   = Carbon::createFromFormat('Y-m-d H:i', $date . ' ' . $end);
-
-        for ($slotStart = $dayStart->copy(); $slotStart->copy()->addMinutes($duration)->lte($dayEnd); $slotStart->addMinutes($duration)) {
-            $startStr = $slotStart->format('H:i:s');
-            $endStr   = $slotStart->copy()->addMinutes($duration)->format('H:i:s');
-
-            if ($this->slots->hasOverlap($courtId, $date, $startStr, $endStr)) {
-                $skipped++;
-
-                continue;
-            }
-
-            $created[] = $this->slots->create([
-                'court_id'   => $courtId,
-                'date'       => $date,
-                'start_time' => $startStr,
-                'end_time'   => $endStr,
-                'is_booked'  => false,
-            ]);
-        }
     }
 
     /**

@@ -46,6 +46,22 @@ class Court extends Model
     }
 
     /**
+     * A court has a weekly availability template (one row per day-of-week).
+     */
+    public function schedules(): HasMany
+    {
+        return $this->hasMany(CourtSchedule::class);
+    }
+
+    /**
+     * A court has date-specific schedule exceptions (holidays, Eid, etc.).
+     */
+    public function scheduleExceptions(): HasMany
+    {
+        return $this->hasMany(CourtScheduleException::class);
+    }
+
+    /**
      * A court has many bookings.
      */
     public function bookings(): HasMany

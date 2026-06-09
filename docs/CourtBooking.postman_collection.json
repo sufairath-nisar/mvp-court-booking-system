@@ -236,22 +236,6 @@
           }
         },
         {
-          "name": "Bulk generate slots",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Accept", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"court_id\": 1,\n  \"slot_duration\": 60,\n  \"dates\": [\n    { \"date\": \"2026-12-10\", \"start_time\": \"09:00\", \"end_time\": \"21:00\" },\n    { \"date\": \"2026-12-12\", \"start_time\": \"08:00\", \"end_time\": \"12:00\" },\n    { \"date\": \"2026-12-15\", \"start_time\": \"09:00\", \"end_time\": \"21:00\" }\n  ]\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{base_url}}/admin/slots/bulk", "host": ["{{base_url}}"], "path": ["admin", "slots", "bulk"] }
-          }
-        },
-        {
           "name": "Update slot",
           "request": {
             "method": "PUT",
@@ -276,6 +260,92 @@
               { "key": "Authorization", "value": "Bearer {{admin_token}}" }
             ],
             "url": { "raw": "{{base_url}}/admin/slots/1", "host": ["{{base_url}}"], "path": ["admin", "slots", "1"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Schedule",
+      "item": [
+        {
+          "name": "Set weekly schedule",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schedule\": [\n    { \"day_of_week\": 1, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 2, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 3, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 4, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 5, \"open_time\": \"09:00\", \"close_time\": \"21:00\", \"slot_duration\": 60 },\n    { \"day_of_week\": 6, \"open_time\": \"08:00\", \"close_time\": \"12:00\", \"slot_duration\": 60 }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/courts/1/schedule", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "schedule"] }
+          }
+        },
+        {
+          "name": "Get weekly schedule",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/courts/1/schedule", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "schedule"] }
+          }
+        },
+        {
+          "name": "Add schedule exception (Eid)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"2026-10-12\",\n  \"is_closed\": true,\n  \"reason\": \"Eid\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/courts/1/schedule-exceptions", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "schedule-exceptions"] }
+          }
+        },
+        {
+          "name": "List schedule exceptions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/courts/1/schedule-exceptions", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "schedule-exceptions"] }
+          }
+        },
+        {
+          "name": "Delete schedule exception",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "url": { "raw": "{{base_url}}/admin/courts/1/schedule-exceptions/1", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "schedule-exceptions", "1"] }
+          }
+        },
+        {
+          "name": "Generate slots from schedule",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_date\": \"2026-10-12\",\n  \"end_date\": \"2026-10-18\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/admin/courts/1/generate-slots", "host": ["{{base_url}}"], "path": ["admin", "courts", "1", "generate-slots"] }
           }
         }
       ]
