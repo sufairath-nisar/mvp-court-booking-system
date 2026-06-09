@@ -138,24 +138,29 @@ class ScheduleService
      * @throws BusinessRuleException
      */
     /**
+     * @param string|null $startDate Y-m-d; defaults to today when null.
+     * @param string|null $endDate   Y-m-d; defaults to start + 30 days when null.
      * @param array<int, string> $excludeDates One-off dates (Y-m-d) to skip for this run.
      * @param bool $preview When true, compute counts WITHOUT saving any slots.
      *
      * @throws BusinessRuleException
      */
-    public function generateSlots(int $courtId, string $startDate, string $endDate, array $excludeDates = [], bool $preview = false): array
+    public function generateSlots(int $courtId, ?string $startDate = null, ?string $endDate = null, array $excludeDates = [], bool $preview = false): array
     {
         $this->courts->findOrFail($courtId);
 
-        $start = Carbon::createFromFormat('Y-m-d', $startDate)->startOfDay();
-        $end   = Carbon::createFromFormat('Y-m-d', $endDate)->startOfDay();
+        $start = $startDate ? Carbon::createFromFormat('Y-m-d', $startDate)->startOfDay() : Carbon::today();
+        $end   = $endDate ? Carbon::createFromFormat('Y-m-d', $endDate)->startOfDay() : $start->copy()->addDays(30);
 
+        if ($end->lt($start)) {
+            throw new BusinessRuleException('end_date must be on or after start_date.');
+        }
         if ($start->diffInDays($end) > 90) {
             throw new BusinessRuleException('The date range may not exceed 90 days.');
         }
 
         $templates  = $this->schedules->forCourt($courtId)->keyBy('day_of_week');
-        $exceptions = $this->exceptions->forCourtBetween($courtId, $startDate, $endDate)
+        $exceptions = $this->exceptions->forCourtBetween($courtId, $start->format('Y-m-d'), $end->format('Y-m-d'))
             ->keyBy(fn (CourtScheduleException $e) => $e->date->format('Y-m-d'));
         $excluded = array_flip($excludeDates);
 

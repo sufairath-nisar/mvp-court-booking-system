@@ -88,8 +88,8 @@ class CourtScheduleController extends Controller
 
         $result = $this->scheduleService->generateSlots(
             $court,
-            $data['start_date'],
-            $data['end_date'],
+            $data['start_date'] ?? null,
+            $data['end_date'] ?? null,
             $data['exclude_dates'] ?? [],
             $data['preview'] ?? false,
         );

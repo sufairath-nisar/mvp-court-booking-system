@@ -160,12 +160,18 @@ POST /api/admin/courts/1/schedule-exceptions
 // ...or a half-day override:
 { "date": "2026-10-13", "open_time": "09:00", "close_time": "12:00", "reason": "Eid half day" }
 
-// 3) Generate concrete slots for a date range (template + exceptions applied).
-//    Optionally skip one-off dates with exclude_dates, or set preview:true to see
-//    the counts (incl. a per-date breakdown) WITHOUT saving anything.
+// 3) Generate concrete slots (template + exceptions applied). start_date/end_date are
+//    OPTIONAL — omit them to default to a rolling horizon (today → +30 days). Pass
+//    exclude_dates for one-off holidays, or preview:true to see counts WITHOUT saving.
 POST /api/admin/courts/1/generate-slots
-{ "start_date": "2026-10-12", "end_date": "2026-10-18", "exclude_dates": ["2026-10-15"] }
-// -> { "created_count": 40, "skipped_count": 0 }
+{}                                                  // generate the next 30 days from the schedule
+
+POST /api/admin/courts/1/generate-slots
+{ "exclude_dates": ["2026-10-15"] }                 // next 30 days, skipping one holiday
+
+POST /api/admin/courts/1/generate-slots
+{ "start_date": "2026-10-12", "end_date": "2026-10-18" }
+// -> { "created_count": 52, "skipped_count": 0 }
 
 POST /api/admin/courts/1/generate-slots
 { "start_date": "2026-10-12", "end_date": "2026-10-18", "preview": true }

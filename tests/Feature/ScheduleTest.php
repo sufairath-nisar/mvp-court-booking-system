@@ -152,6 +152,26 @@ class ScheduleTest extends TestCase
             ->assertJsonPath('data.created_count', 3); // only the 2nd Monday
     }
 
+    public function test_generate_defaults_to_a_rolling_horizon_when_no_dates_given(): void
+    {
+        $admin = $this->admin();
+        $court = Court::factory()->create();
+
+        // Every day of the week 09:00-12:00 (3 slots/day) so the count is
+        // independent of which weekday "today" is: 31 days (today..+30) * 3 = 93.
+        $schedule = [];
+        for ($day = 0; $day <= 6; $day++) {
+            $schedule[] = ['day_of_week' => $day, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60];
+        }
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", ['schedule' => $schedule])->assertOk();
+
+        // No start_date / end_date -> defaults to today .. +30 days.
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [])
+            ->assertCreated()
+            ->assertJsonPath('data.created_count', 93);
+    }
+
     public function test_preview_returns_counts_without_saving_any_slots(): void
     {
         $admin = $this->admin();

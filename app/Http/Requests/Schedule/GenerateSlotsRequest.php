@@ -18,13 +18,16 @@ class GenerateSlotsRequest extends FormRequest
      * Generate concrete slots from the court's weekly schedule (+ exceptions)
      * across an inclusive date range.
      *
+     * `start_date`/`end_date` are optional: omit them and it defaults to a rolling
+     * horizon (today → +30 days). Pass `exclude_dates` for one-off holidays.
+     *
      * @return array<string, mixed>
      */
     public function rules(): array
     {
         return [
-            'start_date'      => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
-            'end_date'        => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'start_date'      => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'end_date'        => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'exclude_dates'   => ['sometimes', 'array'],
             'exclude_dates.*' => ['date_format:Y-m-d'],
             'preview'         => ['sometimes', 'boolean'], // true => return counts without saving
