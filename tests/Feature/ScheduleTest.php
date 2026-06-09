@@ -128,6 +128,30 @@ class ScheduleTest extends TestCase
             ->assertJsonPath('data.created_count', 3); // override, not 12
     }
 
+    public function test_generation_can_exclude_specific_dates(): void
+    {
+        $admin = $this->admin();
+        $court = Court::factory()->create();
+        $firstMonday = Carbon::parse('next monday');
+
+        // Every Monday 09:00-12:00 => 3 slots.
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/courts/{$court->id}/schedule", [
+            'schedule' => [
+                ['day_of_week' => 1, 'open_time' => '09:00', 'close_time' => '12:00', 'slot_duration' => 60],
+            ],
+        ])->assertOk();
+
+        // Two Mondays in range, but exclude the first one for this run.
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/admin/courts/{$court->id}/generate-slots", [
+                'start_date'    => $firstMonday->format('Y-m-d'),
+                'end_date'      => $firstMonday->copy()->addDays(7)->format('Y-m-d'),
+                'exclude_dates' => [$firstMonday->format('Y-m-d')],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.created_count', 3); // only the 2nd Monday
+    }
+
     public function test_a_consumer_cannot_manage_the_schedule(): void
     {
         $consumer = User::factory()->create();

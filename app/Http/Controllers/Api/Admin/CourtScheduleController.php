@@ -86,7 +86,12 @@ class CourtScheduleController extends Controller
     {
         $data = $request->validated();
 
-        $result = $this->scheduleService->generateSlots($court, $data['start_date'], $data['end_date']);
+        $result = $this->scheduleService->generateSlots(
+            $court,
+            $data['start_date'],
+            $data['end_date'],
+            $data['exclude_dates'] ?? [],
+        );
 
         return $this->successResponse(
             $result,

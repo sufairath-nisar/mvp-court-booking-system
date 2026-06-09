@@ -23,8 +23,10 @@ class GenerateSlotsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'start_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
-            'end_date'   => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'start_date'      => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'end_date'        => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'exclude_dates'   => ['sometimes', 'array'],
+            'exclude_dates.*' => ['date_format:Y-m-d'],
         ];
     }
 }

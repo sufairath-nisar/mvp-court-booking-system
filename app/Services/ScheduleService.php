@@ -137,7 +137,12 @@ class ScheduleService
      *
      * @throws BusinessRuleException
      */
-    public function generateSlots(int $courtId, string $startDate, string $endDate): array
+    /**
+     * @param array<int, string> $excludeDates One-off dates (Y-m-d) to skip for this run.
+     *
+     * @throws BusinessRuleException
+     */
+    public function generateSlots(int $courtId, string $startDate, string $endDate, array $excludeDates = []): array
     {
         $this->courts->findOrFail($courtId);
 
@@ -151,19 +156,26 @@ class ScheduleService
         $templates  = $this->schedules->forCourt($courtId)->keyBy('day_of_week');
         $exceptions = $this->exceptions->forCourtBetween($courtId, $startDate, $endDate)
             ->keyBy(fn (CourtScheduleException $e) => $e->date->format('Y-m-d'));
+        $excluded = array_flip($excludeDates);
 
         $created = 0;
         $skipped = 0;
 
-        DB::transaction(function () use ($start, $end, $templates, $exceptions, $courtId, &$created, &$skipped) {
+        DB::transaction(function () use ($start, $end, $templates, $exceptions, $excluded, $courtId, &$created, &$skipped) {
             for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+                $dateStr = $date->format('Y-m-d');
+
+                if (isset($excluded[$dateStr])) {
+                    continue; // explicitly excluded for this run
+                }
+
                 $window = $this->resolveWindow($date, $templates, $exceptions);
 
                 if ($window === null) {
                     continue; // closed that day (no template, inactive, or an explicit closure)
                 }
 
-                $this->sliceDay($courtId, $date->format('Y-m-d'), $window['open'], $window['close'], $window['duration'], $created, $skipped);
+                $this->sliceDay($courtId, $dateStr, $window['open'], $window['close'], $window['duration'], $created, $skipped);
             }
         });
 
